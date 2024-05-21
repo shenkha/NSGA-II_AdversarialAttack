@@ -31,6 +31,7 @@ from typing import Union, List, Tuple
 from datasets import load_dataset, Dataset
 import evaluate
 from DialogueAPI import dialogue
+import nsga2
 # from attacker.DGSlow import WordAttacker, StructureAttacker
 # from attacker.PWWS import PWWSAttacker
 # from attacker.SCPN import SCPNAttacker
@@ -177,7 +178,7 @@ class DGAttackEval(DGDataset):
             #fitness = args.fitness if att_method == 'structure' else 'performance'
             select_beams = args.select_beams
             max_num_samples = args.max_num_samples
-            att_method = "POPOP"
+            att_method = "NSGA-II"
             file_path = f"{out_dir}/{att_method}_{select_beams}_{model_n}_{dataset_n}_{max_num_samples}.txt"
             self.write_file_path = file_path
 
@@ -255,16 +256,16 @@ class DGAttackEval(DGDataset):
         output = self.model(**inputs, labels = labels['input_ids'])
         return -output.loss
     
-    def initialize_population(self, ori_text, num_individuals):
-        return self.predict_masked_sentences_for_salient_words(ori_text, num_individuals)
+    # def initialize_population(self, ori_text, num_individuals):
+    #     return self.predict_masked_sentences_for_salient_words(ori_text, num_individuals)
 
-    def objective_cls(self, pop,guided_sentence):
-        cls_losses = []
-        for sentence in pop:
-            #text = context + tokenizer.eos_token + sentence
-            cls_loss = self.get_cls_loss([sentence], [guided_sentence])
-            cls_losses.append(cls_loss.item())
-        return cls_losses
+    # def objective_cls(self, pop,guided_sentence):
+    #     cls_losses = []
+    #     for sentence in pop:
+    #         #text = context + tokenizer.eos_token + sentence
+    #         cls_loss = self.get_cls_loss([sentence], [guided_sentence])
+    #         cls_losses.append(cls_loss.item())
+    #     return cls_losses
 
     #pad_token_id = self.tokenizer.pad_token_id
     #eos_token_id = self.tokenizer.eos_token_id
@@ -363,155 +364,155 @@ class DGAttackEval(DGDataset):
                     loss.append(bce_loss(pred, torch.zeros_like(pred)))
             return loss
 
-    def objective_eos(self,pop,guided_sentence):
-        eos_losses = []
-        for sentence in pop:
-            #text = context + tokenizer.eos_token + sentence
-            scores, seqs, pred_len = self.compute_score([sentence])
-            eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)
-            #eos_loss = get_cls_loss([sentence], [guided_sentence])
-            eos_losses.append(eos_loss[0].item())
-        return eos_losses
+    # def objective_eos(self,pop,guided_sentence):
+    #     eos_losses = []
+    #     for sentence in pop:
+    #         #text = context + tokenizer.eos_token + sentence
+    #         scores, seqs, pred_len = self.compute_score([sentence])
+    #         eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)
+    #         #eos_loss = get_cls_loss([sentence], [guided_sentence])
+    #         eos_losses.append(eos_loss[0].item())
+    #     return eos_losses
 
-    import random
-    def mutation(self,pop):
-        new_pop = []  # This will store the new mutated population
+    # import random
+    # def mutation(self,pop):
+    #     new_pop = []  # This will store the new mutated population
 
-        for sentence in pop:
-            # Assume predict_masked_sentences_for_salient_words is a function that provides possible mutations
-            mutated_sentences = self.predict_masked_sentences_for_salient_words(sentence,10)
+    #     for sentence in pop:
+    #         # Assume predict_masked_sentences_for_salient_words is a function that provides possible mutations
+    #         mutated_sentences = self.predict_masked_sentences_for_salient_words(sentence,10)
 
-            if mutated_sentences:
-                # Choose a random mutation from the options
-                mutated_sentence = random.choice(mutated_sentences)
-                #mutated_sentence = mutated_sentences[0]
-            else:
-                # If no mutations are available, keep the original sentence
-                mutated_sentence = sentence
+    #         if mutated_sentences:
+    #             # Choose a random mutation from the options
+    #             mutated_sentence = random.choice(mutated_sentences)
+    #             #mutated_sentence = mutated_sentences[0]
+    #         else:
+    #             # If no mutations are available, keep the original sentence
+    #             mutated_sentence = sentence
 
-            # Add the mutated or original sentence to the new population
-            new_pop.append(mutated_sentence)
+    #         # Add the mutated or original sentence to the new population
+    #         new_pop.append(mutated_sentence)
 
-        return new_pop
+    #     return new_pop
 
-    def tournament_selection(pop, pop_fitness, selection_size, tournament_size=4):
-        if selection_size is None:
-            selection_size = len(pop)
+    # def tournament_selection(pop, pop_fitness, selection_size, tournament_size=4):
+    #     if selection_size is None:
+    #         selection_size = len(pop)
 
-        # Partition the population into non-overlapping tournaments
-        def partition(pop):
-            num_tournaments = int(len(pop) / tournament_size)
-            index = np.arange(len(pop))
-            np.random.shuffle(index)
-            return [index[tournament_size*i:tournament_size*(i+1)] for i in range(num_tournaments)]
+    #     # Partition the population into non-overlapping tournaments
+    #     def partition(pop):
+    #         num_tournaments = int(len(pop) / tournament_size)
+    #         index = np.arange(len(pop))
+    #         np.random.shuffle(index)
+    #         return [index[tournament_size*i:tournament_size*(i+1)] for i in range(num_tournaments)]
 
-        offspring = []
-        selected_indices = []
-        while len(offspring) < selection_size:
-            tournaments = partition(pop)
-            for tournament in tournaments:
-                tournament_inds = [pop[i] for i in tournament]
-                tournament_fitness = [pop_fitness[i] for i in tournament]
-                indices = np.argsort(tournament_fitness)
-                offspring.append(tournament_inds[indices[-1]])
+    #     offspring = []
+    #     selected_indices = []
+    #     while len(offspring) < selection_size:
+    #         tournaments = partition(pop)
+    #         for tournament in tournaments:
+    #             tournament_inds = [pop[i] for i in tournament]
+    #             tournament_fitness = [pop_fitness[i] for i in tournament]
+    #             indices = np.argsort(tournament_fitness)
+    #             offspring.append(tournament_inds[indices[-1]])
 
-        return np.array(offspring[:selection_size])
-    def crossover(self, pop):
+    #     return np.array(offspring[:selection_size])
+    # def crossover(self, pop):
 
-        new_pop = []  # This will store the new population after crossover
+    #     new_pop = []  # This will store the new population after crossover
 
-        # Iterate through the population two items at a time
-        for i in range(0, len(pop) - 1, 2):
-            sentence_1 = pop[i]
-            sentence_2 = pop[i + 1]
+    #     # Iterate through the population two items at a time
+    #     for i in range(0, len(pop) - 1, 2):
+    #         sentence_1 = pop[i]
+    #         sentence_2 = pop[i + 1]
 
-            # Calculate the split points for each sentence
-            split_point_1 = len(sentence_1.split()) // 2
-            split_point_2 = len(sentence_2.split()) // 2
+    #         # Calculate the split points for each sentence
+    #         split_point_1 = len(sentence_1.split()) // 2
+    #         split_point_2 = len(sentence_2.split()) // 2
 
-            # Split the sentences into two parts each
-            part1_1 = sentence_1.split()[:split_point_1]
-            part1_2 = sentence_1.split()[split_point_1:]
-            part2_1 = sentence_2.split()[:split_point_2]
-            part2_2 = sentence_2.split()[split_point_2:]
+    #         # Split the sentences into two parts each
+    #         part1_1 = sentence_1.split()[:split_point_1]
+    #         part1_2 = sentence_1.split()[split_point_1:]
+    #         part2_1 = sentence_2.split()[:split_point_2]
+    #         part2_2 = sentence_2.split()[split_point_2:]
 
-            # Create new sentences by crossover
-            new_sentence_1 = ' '.join(part1_1 + part2_2)
-            new_sentence_2 = ' '.join(part2_1 + part1_2)
+    #         # Create new sentences by crossover
+    #         new_sentence_1 = ' '.join(part1_1 + part2_2)
+    #         new_sentence_2 = ' '.join(part2_1 + part1_2)
 
-            # Add the new sentences to the new population
-            new_pop.append(new_sentence_1)
-            new_pop.append(new_sentence_2)
+    #         # Add the new sentences to the new population
+    #         new_pop.append(new_sentence_1)
+    #         new_pop.append(new_sentence_2)
 
-        # If the original population has an odd number of elements, add the last one unchanged
-        if len(pop) % 2 != 0:
-            new_pop.append(pop[-1])
+    #     # If the original population has an odd number of elements, add the last one unchanged
+    #     if len(pop) % 2 != 0:
+    #         new_pop.append(pop[-1])
 
-        return new_pop
-
-
-    def POPOP(
-        self,
-        context,
-        sentence,
-        guided_messages,
-        objective,
-        selection_func,
-        num_individuals,
-        max_evaluations,
-        seed=2019,
-    ):
-        random.seed(seed)     # python random generator
-        np.random.seed(seed)  # numpy random generator
-
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-        pop = self.initialize_population(sentence, num_individuals)
-        #print(pop)
-        pop_fitness = objective(pop,guided_messages)
-        num_evaluations = num_individuals
-
-        selection_size = num_individuals
-        best_fitness = []
-
-        while num_evaluations < max_evaluations:
-            best_fitness.append([num_evaluations, np.max(pop_fitness)])
-
-            if args.crossover_flag:
-                offspring = self.crossover(pop)
-            #print("OFFSPRING:",offspring)
-            offspring = self.mutation(pop)
-            #print("MUTATION:",offspring)
-            offspring_fitness = objective(offspring,guided_messages)
-
-            num_evaluations += num_individuals
-            #print("DA CONG")
-            #pop_off = np.vstack([pop, offspring])
-            #pop_off = np.vstack([pop, offspring])
-            #pop_off = pop + offspring
-            pop_off = np.concatenate((pop,offspring))
-            pop_off_fitness = np.concatenate((pop_fitness, offspring_fitness))
-            #print("DA GOP")
-            # tournament selection will have a constant tournament_size of 4
-            # select N individuals from (P+O) 2N
-            # selected_indices is not sorted by fitness
-            pop = selection_func(pop_off, pop_off_fitness, selection_size)
-            #print("DA CHON")
-            #print(selected_indices)
-            #pop = pop_off[selected_indices]
-
-            #pop_fitness = pop_off_fitness[selected_indices]
-            pop_fitness = objective(pop, guided_messages)
+    #     return new_pop
 
 
-        #best_fitness.append([num_evaluations, pop_fitness.max().cpu().numpy()])
-        best_fitness.append([num_evaluations, np.max(pop_fitness)])
+    # def POPOP(
+    #     self,
+    #     context,
+    #     sentence,
+    #     guided_messages,
+    #     objective,
+    #     selection_func,
+    #     num_individuals,
+    #     max_evaluations,
+    #     seed=2019,
+    # ):
+    #     random.seed(seed)     # python random generator
+    #     np.random.seed(seed)  # numpy random generator
 
-        return (pop, pop_fitness, best_fitness)
+    #     torch.manual_seed(seed)
+    #     torch.cuda.manual_seed_all(seed)
+
+    #     torch.backends.cudnn.deterministic = True
+    #     torch.backends.cudnn.benchmark = False
+
+    #     pop = self.initialize_population(sentence, num_individuals)
+    #     #print(pop)
+    #     pop_fitness = objective(pop,guided_messages)
+    #     num_evaluations = num_individuals
+
+    #     selection_size = num_individuals
+    #     best_fitness = []
+
+    #     while num_evaluations < max_evaluations:
+    #         best_fitness.append([num_evaluations, np.max(pop_fitness)])
+
+    #         if args.crossover_flag == 1:
+    #             offspring = self.crossover(pop)
+    #         #print("OFFSPRING:",offspring)
+    #         offspring = self.mutation(pop)
+    #         #print("MUTATION:",offspring)
+    #         offspring_fitness = objective(offspring,guided_messages)
+
+    #         num_evaluations += num_individuals
+    #         #print("DA CONG")
+    #         #pop_off = np.vstack([pop, offspring])
+    #         #pop_off = np.vstack([pop, offspring])
+    #         #pop_off = pop + offspring
+    #         pop_off = np.concatenate((pop,offspring))
+    #         pop_off_fitness = np.concatenate((pop_fitness, offspring_fitness))
+    #         #print("DA GOP")
+    #         # tournament selection will have a constant tournament_size of 4
+    #         # select N individuals from (P+O) 2N
+    #         # selected_indices is not sorted by fitness
+    #         pop = selection_func(pop_off, pop_off_fitness, selection_size)
+    #         #print("DA CHON")
+    #         #print(selected_indices)
+    #         #pop = pop_off[selected_indices]
+
+    #         #pop_fitness = pop_off_fitness[selected_indices]
+    #         pop_fitness = objective(pop, guided_messages)
+
+
+    #     #best_fitness.append([num_evaluations, pop_fitness.max().cpu().numpy()])
+    #     best_fitness.append([num_evaluations, np.max(pop_fitness)])
+
+    #     return (pop, pop_fitness, best_fitness)
 
     def log_and_save(self, display: str):
         print(display)
@@ -622,42 +623,44 @@ class DGAttackEval(DGDataset):
             #new_free_message = new_text.split(self.sp_token)[1].strip()
             #cos_sim = self.attacker.sent_encoder.get_sim(new_free_message, free_message)
             self.model = self.model.to(args.device)
-            if args.crossover_flag:
-                print("BAT DAU POPOP VOI CROSSOVER")
+            if args.crossover_flag == 1:
+                print("BAT DAU NSGA-II VOI CROSSOVER")
             else:
-                print("BAT DAU POPOP")
-            if args.objective == "cls":
-                pop, pop_fitness, best_fitness = self.POPOP(original_context, free_message, guided_message, self.objective_cls, self.tournament_selection ,num_individuals= args.num_ind, max_evaluations= 5 * args.num_ind)
-            else:
-                pop, pop_fitness, best_fitness = self.POPOP(original_context, free_message, guided_message, self.objective_eos, self.tournament_selection ,num_individuals= args.num_ind, max_evaluations= 5 * args.num_ind)
+                print("BAT DAU NSGA-II")
 
-            pop_with_fitness = list(zip(pop_fitness, pop))
-            sorted_pop_with_fitness = sorted(pop_with_fitness, key=lambda x: x[0])
-            best_individual = sorted_pop_with_fitness[0][1]
-            best_fitness_value = sorted_pop_with_fitness[0][0]
-            print("Pop:", pop)
-            print("Candidate:", best_individual)
+                
+            # if args.objective == "cls":
+            #     pop, pop_fitness, best_fitness = self.POPOP(original_context, free_message, guided_message, self.objective_cls, self.tournament_selection ,num_individuals= args.num_ind, max_evaluations= 5 * args.num_ind)
+            # else:
+            #     pop, pop_fitness, best_fitness = self.POPOP(original_context, free_message, guided_message, self.objective_eos, self.tournament_selection ,num_individuals= args.num_ind, max_evaluations= 5 * args.num_ind)
 
-            # problem = Problem(self.model, self.tokenizer,original_context, free_message, guided_message)
+            # pop_with_fitness = list(zip(pop_fitness, pop))
+            # sorted_pop_with_fitness = sorted(pop_with_fitness, key=lambda x: x[0])
+            # best_individual = sorted_pop_with_fitness[0][1]
+            # best_fitness_value = sorted_pop_with_fitness[0][0]
+            # print("Pop:", pop)
+            # print("Candidate:", best_individual)
 
-            # evolution = Evolution(problem, num_of_generations=5, num_of_individuals=18, num_of_tour_particips=2,
-            #           tournament_prob=0.9, crossover_param=2, mutation_param=5)
+            problem = nsga2.Problem(self.model, self.tokenizer,original_context, free_message, guided_message)
 
-            # resulting_front = evolution.evolve()
-            # result = []
-            # for individual in resulting_front:
-            #     result.append((individual.sentence,individual.eos_loss, individual.cls_loss))
-            #     #print(individual.sentence, individual.cls_loss, individual.eos_loss)
-            #sorted_data = sorted(result, key=lambda x: x[1])
-            #new_free_message = sorted_data[0][0]
+            evolution = nsga2.Evolution(problem, num_of_generations=5, num_of_individuals=18, num_of_tour_particips=2,
+                      tournament_prob=0.9, crossover_param=2, mutation_param=5)
 
-            new_text = original_context + self.tokenizer.eos_token + best_individual
-            cos_sim = self.sentencoder.get_sim(best_individual, free_message)
+            resulting_front = evolution.evolve()
+            result = []
+            for individual in resulting_front:
+                result.append((individual.sentence,individual.eos_loss, individual.cls_loss))
+                #print(individual.sentence, individual.cls_loss, individual.eos_loss)
+            sorted_data = sorted(result, key=lambda x: x[1])
+            new_free_message = sorted_data[0][0]
+
+            new_text = original_context + self.tokenizer.eos_token + new_free_message
+            cos_sim = self.sentencoder.get_sim(new_free_message, free_message)
             output, time_gap = self.get_prediction(new_text)
             if not output:
                 continue
 
-            self.log_and_save("U'--{} (cosine: {:.3f})".format(best_individual, cos_sim))
+            self.log_and_save("U'--{} (cosine: {:.3f})".format(new_free_message, cos_sim))
             self.log_and_save("G'--{}".format(output))
             adv_bleu_res, adv_rouge_res, adv_meteor_res, adv_pred_len = self.eval_metrics(output, references)
 
@@ -835,8 +838,12 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=2019, help="Random seed")
     parser.add_argument("--objective", type=str, default="cls", choices=["cls", "eos"], help="Objective")
     parser.add_argument("--num_ind", type=int, default=20, help="Number of Individuals")
-    parser.add_argument("--crossover_flag", type=bool, default=False, help="Whether to use Crossover or not")
+    parser.add_argument("--crossover_flag", type=int, default=0, help="Whether to use Crossover or not")
     parser.add_argument("--device", type=str,default="cuda",help="Determine which GPU to use")
+    parser.add_argument("--resume", action="store_true", help="Resume from the last processed entry")
+    parser.add_argument("--resume_log_dir", type=str,
+                        default="/kaggle/working/results/logging",
+                        help="Output directory")
 #     parser.add_argument("--eos_weight", type=float, default=0.8, help="Weight for EOS gradient")
 #     parser.add_argument("--cls_weight", type=float, default=0.2, help="Weight for classification gradient")
 #     parser.add_argument("--delta", type=float, default=0.5, help="Threshold for adaptive search strategy")
