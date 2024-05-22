@@ -76,14 +76,15 @@ class Population:
 
 class Problem:
 
-    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence):
+    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device):
         self.context  = context 
         self.original_sentence = original_sentence
         self.guided_sentence = guided_sentence
-        self.model = model.to(DGAttackEval.device)
+        self.model = model.to(device)
         self.tokenizer = tokenizer
         self.pad_token_id = self.tokenizer.pad_token_id
         self.eos_token_id = self.tokenizer.eos_token_id
+        self.device = device
 
 #     def generate_individual(self):
 #         #num_masks = self.num_masks_func(self.original_sentence)

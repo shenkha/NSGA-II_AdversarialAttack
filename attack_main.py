@@ -147,7 +147,7 @@ class DGAttackEval(DGDataset):
             )
             self.args = args
             self.model = model
-            self.device = device
+            self.device = args.device
 
             self.num_beams = args.num_beams
             self.num_beam_groups = args.num_beam_groups
@@ -640,7 +640,7 @@ class DGAttackEval(DGDataset):
             # print("Pop:", pop)
             # print("Candidate:", best_individual)
             
-            problem = nsga2.Problem(self.model, self.tokenizer,original_context, free_message, guided_message)
+            problem = nsga2.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device)
 
             evolution = nsga2.Evolution(args.crossover_flag, problem, num_of_generations=5, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5)
@@ -787,7 +787,7 @@ def main(args: argparse.Namespace):
             tokenizer=tokenizer,
             model=model,
             #attacker=attacker,
-            #device=device,
+            device= args.device,
             task=task,
             bleu=bleu,
             rouge=rouge,
