@@ -628,7 +628,6 @@ class DGAttackEval(DGDataset):
             else:
                 print("BAT DAU NSGA-II")
 
-                
             # if args.objective == "cls":
             #     pop, pop_fitness, best_fitness = self.POPOP(original_context, free_message, guided_message, self.objective_cls, self.tournament_selection ,num_individuals= args.num_ind, max_evaluations= 5 * args.num_ind)
             # else:
@@ -640,10 +639,10 @@ class DGAttackEval(DGDataset):
             # best_fitness_value = sorted_pop_with_fitness[0][0]
             # print("Pop:", pop)
             # print("Candidate:", best_individual)
-
+            
             problem = nsga2.Problem(self.model, self.tokenizer,original_context, free_message, guided_message)
 
-            evolution = nsga2.Evolution(problem, num_of_generations=5, num_of_individuals=18, num_of_tour_particips=2,
+            evolution = nsga2.Evolution(args.crossover_flag, problem, num_of_generations=5, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5)
 
             resulting_front = evolution.evolve()
