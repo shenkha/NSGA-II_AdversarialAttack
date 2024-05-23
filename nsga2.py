@@ -102,7 +102,7 @@ class Problem:
         self.pad_token_id = self.tokenizer.pad_token_id
         self.eos_token_id = self.tokenizer.eos_token_id
         self.device = device
-        self.sentencoder = SentenceEncoder(self.device)
+        self.sentencoder = SentenceEncoder(model_name='paraphrase-distilroberta-base-v1', device = self.device)
         
 
 #     def generate_individual(self):
@@ -655,7 +655,7 @@ class NSGA2Utils:
 
         #num_masks = self.problem.num_masks_func(child.sentence)
         original = self.problem.original_sentence
-        mutated_sentences  = DGAttackEval.predict_masked_sentences_for_salient_words(child.sentence,self.num_of_individuals)
+        mutated_sentences  = self.problem.predict_masked_sentences_for_salient_words(child.sentence,self.num_of_individuals)
         #print(f"Mutated Sentences: {mutated_sentences}")
         #print(f"Mutating child sentence: {child.sentence}")
         if mutated_sentences:
@@ -692,18 +692,19 @@ import matplotlib.pyplot as plt
 
 class Evolution:
 
-    def __init__(self, crossover_flag, problem, num_of_generations=1000, num_of_individuals=100, num_of_tour_particips=2,
-                 tournament_prob=0.9, crossover_param=2, mutation_param=5, write_file_path_gen = None, ):
+    def __init__(self, crossover_flag, file_path_gen, problem, num_of_generations=1000, num_of_individuals=100, num_of_tour_particips=2,
+                 tournament_prob=0.9, crossover_param=2, mutation_param=5,  ):
         self.utils = NSGA2Utils(problem, num_of_individuals, num_of_tour_particips, tournament_prob, crossover_param,
                                 mutation_param, crossover_flag)
         self.population = None
         self.num_of_generations = num_of_generations
         self.on_generation_finished = []
         self.num_of_individuals = num_of_individuals
-        self.write_file_path_gen = write_file_path_gen
+        file_path = file_path_gen.split('.txt')[0]
+        self.write_file_path_gen = file_path + "_Gen.txt"
         self.problem = problem
     
-    def log_and_save_gen(self,display: str, write_file_path_gen):
+    def log_and_save_gen(self,display: str):
         print(display)
         with open(self.write_file_path_gen, 'a') as f:
             f.write(display + "\n")
@@ -731,9 +732,9 @@ class Evolution:
         children = self.utils.create_children(self.population)
         returned_population = None
         self.log_and_save_gen("\nDialogue history: {}".format(self.problem.context))
-        self.log_and_save("U--{} \n(Ref: ['{}', ...])".format(self.problem.free_message, self.problem.references[-1]))
+        self.log_and_save_gen("U--{} \n(Ref: ['{}', ...])".format(self.problem.original_sentence, self.problem.guided_sentence))
             # Original generation
-        eos_token = DGAttackEval.tokenizer.eos_token
+        eos_token = self.problem.tokenizer.eos_token
         text = self.problem.context + eos_token + self.problem.free_message
         output, time_gap = DGAttackEval.get_prediction(text)
         self.log_and_save_gen("G--{}".format(output))
