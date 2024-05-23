@@ -13,6 +13,7 @@ import nltk
 
 
 import torch.nn as nn
+import time
 from DialogueAPI import dialogue
 from attack_main import SentenceEncoder
 softmax = nn.Softmax(dim=1)
@@ -102,6 +103,7 @@ class Problem:
         self.pad_token_id = self.tokenizer.pad_token_id
         self.eos_token_id = self.tokenizer.eos_token_id
         self.device = device
+        self.task = "seq2seq"
         self.sentencoder = SentenceEncoder(model_name='paraphrase-distilroberta-base-v1', device = self.device)
         
 
@@ -115,7 +117,41 @@ class Problem:
 #             individual.guided_sentence = self.guided_sentence
 #             return individual
 #         return None
+    def get_prediction_sen(self, text: str):
+        if self.task == 'seq2seq':
+            effective_text = text
+        else:
+            effective_text = text + self.tokenizer.eos_token
 
+        inputs = self.tokenizer(
+            effective_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=1023,
+        )
+        input_ids = inputs.input_ids.to(self.device)
+        self.model = self.model.to(self.device)
+        t1 = time.time()
+        with torch.no_grad():
+            outputs = dialogue(
+                self.model,
+                input_ids,
+                early_stopping=False,
+                num_beams=1,
+                num_beam_groups=1,
+                use_cache=True,
+                max_length=1024,
+            )
+        if self.task == 'seq2seq':
+            output = self.tokenizer.batch_decode(outputs['sequences'], skip_special_tokens=True)[0]
+        else:
+            output = self.tokenizer.batch_decode(
+                outputs['sequences'][:, input_ids.shape[-1]:],
+                skip_special_tokens=True,
+            )[0]
+        t2 = time.time()
+        return output.strip(), t2 - t1
+    
     def predict_masked_sentences_for_salient_words(self, sentence, num_sentences=20, top_k=5):
             berttokenizer = AutoTokenizer.from_pretrained('bert-large-uncased')
             bertmodel = AutoModelForMaskedLM.from_pretrained('bert-large-uncased').eval().to(self.device)
@@ -722,7 +758,7 @@ class Evolution:
             if individual.sentence != first_individual.sentence:
                 return False
         return True
-
+    
 
     def evolve(self):
         self.population = self.utils.create_initial_population()
@@ -735,8 +771,8 @@ class Evolution:
         self.log_and_save_gen("U--{} \n(Ref: ['{}', ...])".format(self.problem.original_sentence, self.problem.guided_sentence))
             # Original generation
         eos_token = self.problem.tokenizer.eos_token
-        text = self.problem.context + eos_token + self.problem.free_message
-        output, time_gap = DGAttackEval.get_prediction(text)
+        text = self.problem.context + eos_token + self.problem.original_sentence
+        output, time_gap = self.problem.get_prediction_sen(text)
         self.log_and_save_gen("G--{}".format(output))
 
         for i in tqdm(range(self.num_of_generations)):
@@ -761,7 +797,8 @@ class Evolution:
             new_population.extend(self.population.fronts[front_num][0:self.num_of_individuals - len(new_population)])
             returned_population = self.population
             for individual in returned_population.fronts[0]:
-                self.log_and_save_gen(individual.sentence, individual.cls_loss, individual.eos_loss)
+                log_message = f"Sentence: '{individual.sentence}', CLS Loss: {individual.cls_loss}, EOS Loss: {individual.eos_loss}"
+                self.log_and_save_gen(log_message)
             self.population = new_population
             self.plot_generation(self.population, i)
             

@@ -161,7 +161,7 @@ class DGAttackEval(DGDataset):
             model_n = args.model_name_or_path.split("/")[-1]
             dataset_n = DATA2NAME.get(args.dataset, args.dataset.split("/")[-1])
             #combined = "combined" if args.use_combined_loss and att_method == 'structure' else "single"
-            #max_per = args.max_per
+            #max_per = args.tas
             #fitness = args.fitness if att_method == 'structure' else 'performance'
             select_beams = args.select_beams
             max_num_samples = args.max_num_samples
