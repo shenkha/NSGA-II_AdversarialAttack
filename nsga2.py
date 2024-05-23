@@ -14,8 +14,10 @@ import nltk
 
 import torch.nn as nn
 from DialogueAPI import dialogue
+from attack_main import SentenceEncoder
 softmax = nn.Softmax(dim=1)
 bce_loss = nn.BCELoss()
+
 
 immutable_words = {'was', 'were', 'am', 'is', 'are', 'been', 'being', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
 
@@ -100,6 +102,8 @@ class Problem:
         self.pad_token_id = self.tokenizer.pad_token_id
         self.eos_token_id = self.tokenizer.eos_token_id
         self.device = device
+        self.sentencoder = SentenceEncoder(self.device)
+        
 
 #     def generate_individual(self):
 #         #num_masks = self.num_masks_func(self.original_sentence)
