@@ -1,22 +1,37 @@
 from typing import Union, List, Tuple
 import random
-
-import torch
-from attack_main import DGAttackEval
-from transformers import ( 
-    BertTokenizer,
-    BertTokenizerFast,
-    BartForConditionalGeneration, 
-    BartTokenizer,
+from transformers import (
     AutoConfig, 
     AutoTokenizer, 
     AutoModelForSeq2SeqLM,
     AutoModelForCausalLM,
+    AutoModelForMaskedLM,
 )
+import torch
+from attack_main import DGAttackEval
+import nltk
+
 
 import torch.nn as nn
+from DialogueAPI import dialogue
 softmax = nn.Softmax(dim=1)
 bce_loss = nn.BCELoss()
+
+immutable_words = {'was', 'were', 'am', 'is', 'are', 'been', 'being', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
+
+def identify_salient_words(sentence):
+    # Tokenize the sentence
+    tokens = nltk.word_tokenize(sentence)
+    # Get POS tags
+    pos_tags = nltk.pos_tag(tokens)
+    #print(pos_tags)
+    # Define POS tags of interest (e.g., nouns, verbs, adjectives)
+    salient_pos_tags = {'NN', 'NNS', 'NNP', 'NNPS', 'VB', 'VBD', 'VBG', 'VBN', 'VBZ', 'VBP','JJ', 'JJR', 'JJS'}
+
+    # Identify salient words based on POS tags
+    salient_words = [word for word, tag in pos_tags if tag in salient_pos_tags and word.isalnum() and len(word) > 1  and word.lower() not in immutable_words]
+    return salient_words
+
 class Individual(object):
  
     def __init__(self):
@@ -97,9 +112,192 @@ class Problem:
 #             return individual
 #         return None
 
+    def predict_masked_sentences_for_salient_words(self, sentence, num_sentences=20, top_k=5):
+            berttokenizer = AutoTokenizer.from_pretrained('bert-large-uncased')
+            bertmodel = AutoModelForMaskedLM.from_pretrained('bert-large-uncased').eval().to(self.device)
+            salient_words = identify_salient_words(sentence)
+            generated_sentences = set()  # Use a set to avoid duplicates
+            max_attempts = 100
+            attempts = 0
+
+            while len(generated_sentences) < num_sentences and attempts < max_attempts:
+                word_to_mask = random.choice(salient_words) if salient_words else None
+                if not word_to_mask:
+                    break  # Exit if there are no salient words to mask
+
+                masked_sentence = sentence.replace(word_to_mask, berttokenizer.mask_token, 1)
+                inputs = berttokenizer.encode_plus(masked_sentence, return_tensors="pt")
+                input_ids = inputs['input_ids'].to(self.device)
+
+                with torch.no_grad():
+                    outputs = bertmodel(input_ids)
+                    predictions = outputs.logits
+
+                mask_token_index = (input_ids == berttokenizer.mask_token_id).nonzero(as_tuple=True)[1]
+                top_predictions = predictions[0, mask_token_index, :].topk(top_k).indices.squeeze().tolist()
+
+        #         for predicted_index in top_predictions:
+        #             predicted_token = berttokenizer.decode([predicted_index]).strip()
+        #             new_sentence = masked_sentence.replace(berttokenizer.mask_token, predicted_token, 1)
+        #             sim = sentencoder.get_sim(new_sentence, sentence)
+        #             if 0.70 <= sim <= 1:
+        #                 generated_sentences.add(new_sentence)  # Add only if it meets similarity criteria
+
+        #             if len(generated_sentences) >= num_sentences:
+        #                 break  # Break if we have enough sentences
+
+        #     return list(generated_sentences)
+                for predicted_index in top_predictions:
+                    predicted_token = berttokenizer.decode([predicted_index]).strip()
+                    if predicted_token.isalnum():  # Filter out non-alphanumeric tokens
+                        new_sentence = masked_sentence.replace(berttokenizer.mask_token, predicted_token, 1)
+                        sim = self.sentencoder.get_sim(new_sentence, sentence)
+                        if 0.80 <= sim <= 1.0:
+                            generated_sentences.add(new_sentence)
+                        if len(generated_sentences) >= num_sentences:
+                            break
+
+                attempts += 1
+
+            result_list = list(generated_sentences)
+            if len(result_list) < num_sentences:
+                # If not enough sentences, replicate the last one until reaching the desired number
+                last_sentence = result_list[-1] if result_list else sentence
+                result_list.extend([last_sentence] * (num_sentences - len(result_list)))
+
+            return result_list
+    
+    def get_cls_loss(self, sentence: List[str], labels: List[str]):
+        inputs = self.tokenizer(
+                sentence,
+                return_tensors = "pt",
+                padding = True,
+                truncation = True,
+                max_length = 1024,
+        ).to(self.device)
+
+        labels = self.tokenizer(
+                labels,
+                return_tensors = "pt",
+                padding = True,
+                truncation = True,
+                max_length = 1024,
+        ).to(self.device)
+
+        output = self.model(**inputs, labels = labels['input_ids'])
+        return -output.loss
+    
+    # def initialize_population(self, ori_text, num_individuals):
+    #     return self.predict_masked_sentences_for_salient_words(ori_text, num_individuals)
+
+    # def objective_cls(self, pop,guided_sentence):
+    #     cls_losses = []
+    #     for sentence in pop:
+    #         #text = context + tokenizer.eos_token + sentence
+    #         cls_loss = self.get_cls_loss([sentence], [guided_sentence])
+    #         cls_losses.append(cls_loss.item())
+    #     return cls_losses
+
+    #pad_token_id = self.tokenizer.pad_token_id
+    #eos_token_id = self.tokenizer.eos_token_id
+
+    def remove_pad(self, s: torch.Tensor):
+        return s[torch.nonzero(s != self.tokenizer.pad_token_id)].squeeze(1)
+
+    def compute_seq_len(self, seq: torch.Tensor):
+        if seq.shape[0] == 0: # empty sequence
+            return 0
+        if seq[0].eq(self.tokenizer.pad_token_id):
+            return int(len(seq) - sum(seq.eq(self.tokenizer.pad_token_id)))
+        else:
+            return int(len(seq) - sum(seq.eq(self.tokenizer.pad_token_id))) - 1
+
+
+    def get_prediction(self,sentence: Union[str, List[str]]):
+            text = sentence
+            inputs = self.tokenizer(
+                text,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=1023,
+            )
+            input_ids = inputs['input_ids'].to(self.device)
+            # ['sequences', 'sequences_scores', 'scores', 'beam_indices']
+            outputs = dialogue(
+                self.model,
+                input_ids,
+                early_stopping=False,
+                pad_token_id=self.tokenizer.pad_token_id,
+                num_beams=1,
+                num_beam_groups=1,
+                use_cache=True,
+                max_length=1024,
+            )
+
+            seqs = outputs['sequences'].detach()
+    #         if self.task == 'seq2seq':
+    #             seqs = outputs['sequences'].detach()
+    #         else:
+    #             seqs = outputs['sequences'][:, input_ids.shape[-1]:].detach()
+
+            seqs = [self.remove_pad(seq) for seq in seqs]
+            out_scores = outputs['scores']
+            pred_len = [self.compute_seq_len(seq) for seq in seqs]
+            return pred_len, seqs, out_scores
+
+    def compute_batch_score(self, text: List[str]):
+            batch_size = len(text)
+            num_beams =  1
+            batch_size = len(text)
+            index_list = [i * 1 for i in range(batch_size + 1)]
+            pred_len, seqs, out_scores = self.get_prediction(text)
+
+            scores = [[] for _ in range(batch_size)]
+            for out_s in out_scores:
+                for i in range(batch_size):
+                    current_index = index_list[i]
+                    scores[i].append(out_s[current_index: current_index + 1])
+            scores = [torch.cat(s) for s in scores]
+            scores = [s[:pred_len[i]] for i, s in enumerate(scores)]
+            return scores, seqs, pred_len
+
+
+    def compute_score(self, text: Union[str, List[str]], batch_size: int = None):
+            total_size = len(text)
+            if batch_size is None:
+                batch_size = len(text)
+
+            if batch_size < total_size:
+                scores, seqs, pred_len = [], [], []
+                for start in range(0, total_size, batch_size):
+                    end = min(start + batch_size, total_size)
+                    score, seq, p_len = self.compute_batch_score(text[start: end])
+                    pred_len.extend(p_len)
+                    seqs.extend(seq)
+                    scores.extend(score)
+            else:
+                scores, seqs, pred_len = self.compute_batch_score(text)
+            return scores, seqs, pred_len
+    def leave_eos_target_loss(self, scores: list, seqs: list, pred_len: list):
+            loss = []
+            for i, s in enumerate(scores): # s: T X V
+                if pred_len[i] == 0:
+                    loss.append(torch.tensor(0.0, requires_grad=True).to(self.device))
+                else:
+                    s[:,self.tokenizer.pad_token_id] = 1e-12
+                    softmax_v = softmax(s)
+                    eos_p = softmax_v[:pred_len[i],self.tokenizer.eos_token_id]
+                    target_p = torch.stack([softmax_v[idx, v] for idx, v in enumerate(seqs[i][1:])])
+                    target_p = target_p[:pred_len[i]]
+                    pred = eos_p + target_p
+                    pred[-1] = pred[-1] / 2
+                    loss.append(bce_loss(pred, torch.zeros_like(pred)))
+            return loss
+
     def generate_unique_sentences(self,num_sentences):
         # Ensure this call generates the required number of unique sentences
-        return DGAttackEval.predict_masked_sentences_for_salient_words(self.original_sentence ,num_sentences=num_sentences)
+        return self.predict_masked_sentences_for_salient_words(self.original_sentence ,num_sentences=num_sentences)
     
     def generate_individual_from_sentence(self, sentence):
         individual = Individual()
@@ -229,9 +427,9 @@ class Problem:
 
     def calculate_objectives(self, individual):
         if individual and individual.sentence and individual.guided_sentence:
-            individual.cls_loss = DGAttackEval.get_cls_loss([individual.sentence], [individual.guided_sentence]).item()
-            scores, seqs, pred_len = DGAttackEval.compute_score([individual.sentence])
-            individual.eos_loss = DGAttackEval.leave_eos_target_loss(scores, seqs, pred_len)[0].item()
+            individual.cls_loss = self.get_cls_loss([individual.sentence], [individual.guided_sentence]).item()
+            scores, seqs, pred_len = self.compute_score([individual.sentence])
+            individual.eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)[0].item()
             #print(f"Calculated cls_loss: {individual.cls_loss}, eos_loss: {individual.eos_loss} for sentence: {individual.sentence}")
         else:
             individual.cls_loss = float('inf')  
