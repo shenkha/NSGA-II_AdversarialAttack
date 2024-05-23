@@ -224,7 +224,8 @@ class Problem:
                 max_length = 1024,
         ).to(self.device)
 
-        output = self.model(**inputs, labels = labels['input_ids'])
+        with torch.no_grad():
+            output = self.model(**inputs, labels = labels['input_ids'])
         return -output.loss
     
     # def initialize_population(self, ori_text, num_individuals):
@@ -320,10 +321,15 @@ class Problem:
                 scores, seqs, pred_len = self.compute_batch_score(text)
             return scores, seqs, pred_len
     def leave_eos_target_loss(self, scores: list, seqs: list, pred_len: list):
+            # loss = []
+            # for i, s in enumerate(scores): # s: T X V
+            #     if pred_len[i] == 0:
+            #         loss.append(torch.tensor(0.0, requires_grad=True).to(self.device))
             loss = []
-            for i, s in enumerate(scores): # s: T X V
-                if pred_len[i] == 0:
-                    loss.append(torch.tensor(0.0, requires_grad=True).to(self.device))
+            with torch.no_grad():  # Start of no gradient computation context
+                for i, s in enumerate(scores):  # s: T X V
+                    if pred_len[i] == 0:
+                        loss.append(torch.tensor(0.0).to(self.device))
                 else:
                     s[:,self.tokenizer.pad_token_id] = 1e-12
                     softmax_v = softmax(s)
