@@ -18,7 +18,35 @@ from DialogueAPI import dialogue
 from attack_main import SentenceEncoder
 softmax = nn.Softmax(dim=1)
 bce_loss = nn.BCELoss()
+import numpy as np
 
+def get_front_0(F):
+        l = len(F)
+        r = np.zeros(l, dtype=np.int8)
+        for i in range(l):
+            if r[i] == 0:
+                for j in range(i + 1, l):
+                    better_sol = find_the_better(F[i], F[j])
+                    if better_sol == 0:
+                        r[j] = 1
+                    elif better_sol == 1:
+                        r[i] = 1
+                        break
+        return r == 0
+
+def find_the_better(x, y):
+        if isinstance(x, list):
+            x = np.array(x)
+        if isinstance(y, list):
+            y = np.array(y)
+        sub_ = x - y
+        x_better = np.all(sub_ <= 0)
+        y_better = np.all(sub_ >= 0)
+        if x_better == y_better:  # True - True
+            return -1
+        if y_better:  # False - True
+            return 1
+        return 0  # True - False
 
 immutable_words = {'was', 'were', 'am', 'is', 'are', 'been', 'being', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
 
@@ -35,8 +63,87 @@ def identify_salient_words(sentence):
     salient_words = [word for word, tag in pos_tags if tag in salient_pos_tags and word.isalnum() and len(word) > 1  and word.lower() not in immutable_words]
     return salient_words
 
+def constrained_sum_sample_pos(n, total, low=0):
+    """Return a randomly chosen list of n positive integers summing to total.
+    Each such list is equally likely to occur."""
+
+    dividers = sorted(
+        np.random.choice(np.arange(1, total - (low - 1) * n), n - 1, replace=False)
+    )
+
+    return [
+        a - b + low - 1
+        for a, b in zip(dividers + [total - (low - 1) * n], [0] + dividers)
+    ]
+
+
+def identify_salient_words_with_idx(sentence):
+    # Tokenize the sentence
+    tokens = nltk.word_tokenize(sentence)
+    # Get POS tags
+    pos_tags = nltk.pos_tag(tokens)
+    # print(pos_tags)
+    # Define POS tags of interest (e.g., nouns, verbs, adjectives)
+    salient_pos_tags = {
+        "NN",
+        "NNS",
+        "NNP",
+        "NNPS",
+        "VB",
+        "VBD",
+        "VBG",
+        "VBN",
+        "VBZ",
+        "VBP",
+        "JJ",
+        "JJR",
+        "JJS",
+    }
+
+    immutable_words = {'was', 'were', 'am', 'is', 'are', 'been', 'being', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
+
+    # Identify salient words based on POS tags
+
+    words_count = {}
+    salient_words = []
+
+    for word, tag in pos_tags:
+        if word not in words_count:
+            words_count[word] = 1
+        else:
+            words_count[word] += 1
+
+        if not (
+            tag in salient_pos_tags
+            and word.isalnum()
+            and len(word) > 1
+            and word.lower() not in immutable_words
+        ):
+            continue
+
+        salient_words.append(
+            (
+                words_count[word]
+                - 1,  # to differentiate the first and second occurrence of the same word
+                word,
+            )
+        )
+    return salient_words
+
+def string_replace(text, _from, _to, idx):
+    nth = idx + 1
+    arr = text.split(_from)
+    part1 = _from.join(arr[:nth])
+    part2 = _from.join(arr[nth:])
+    return part1 + _to + part2
+
+
+
+
+
+
 class Individual(object):
- 
+
     def __init__(self):
         self.rank = None
         self.crowding_distance = None
@@ -44,35 +151,53 @@ class Individual(object):
         self.guided_sentence = None
         self.domination_count = None
         self.dominated_solutions = None
-        self.eos_loss = None
+        self.length = None
+        self.accuracy = None
         self.cls_loss = None
+        self.eos_loss = None
     
-#     def __eq__(self, other):
-#         if isinstance(self, other.__class__):
-#             return self.features == other.features
-#         return False
+#     def dominates(self, other_individual):
+# #         and_condition = True
+# #         or_condition = False
+# #         for first, second in zip(self.objectives, other_individual.objectives):
+# #             and_condition = and_condition and first <= second
+# #             or_condition = or_condition or first < second
+# #         return (and_condition and or_condition)
+#         better_in_at_least_one = False
+#         not_worse_in_any = True
 
+#         if self.eos_loss < other_individual.eos_loss:
+#             better_in_at_least_one = True
+#         elif self.eos_loss > other_individual.eos_loss:
+#             not_worse_in_any = False
+
+#         if self.cls_loss < other_individual.cls_loss:
+#             better_in_at_least_one = True
+#         elif self.cls_loss > other_individual.cls_loss:
+#             not_worse_in_any = False
+
+#         return better_in_at_least_one and not_worse_in_any
+
+
+    #This one is for NSGA-II with length and accuracy
     def dominates(self, other_individual):
-#         and_condition = True
-#         or_condition = False
-#         for first, second in zip(self.objectives, other_individual.objectives):
-#             and_condition = and_condition and first <= second
-#             or_condition = or_condition or first < second
-#         return (and_condition and or_condition)
         better_in_at_least_one = False
         not_worse_in_any = True
 
-        if self.eos_loss < other_individual.eos_loss:
+        # Maximizing length: this individual should have greater or equal length
+        if self.length > other_individual.length:
             better_in_at_least_one = True
-        elif self.eos_loss > other_individual.eos_loss:
+        elif self.length < other_individual.length:
             not_worse_in_any = False
 
-        if self.cls_loss < other_individual.cls_loss:
+        # Minimizing accuracy: this individual should have less or equal accuracy
+        if self.accuracy < other_individual.accuracy:
             better_in_at_least_one = True
-        elif self.cls_loss > other_individual.cls_loss:
+        elif self.accuracy > other_individual.accuracy:
             not_worse_in_any = False
 
         return better_in_at_least_one and not_worse_in_any
+
     
 class Population:
     def __init__(self):
@@ -119,6 +244,17 @@ class Problem:
 #             individual.guided_sentence = self.guided_sentence
 #             return individual
 #         return None
+
+    def mask_words(self,original_sentence, idx_words):
+
+    # berttokenizer.mask_token == [MASK]
+        return [
+            string_replace(
+                text=original_sentence, _from=word, _to=self.berttokenizer.mask_token, idx=idx
+            )
+            for idx, word in idx_words
+        ]
+    
     def get_prediction_sen(self, text: str):
         if self.task == 'seq2seq':
             effective_text = text
@@ -153,62 +289,122 @@ class Problem:
             )[0]
         t2 = time.time()
         return output.strip(), t2 - t1
+    
+    def predict_masked_sentences_for_salient_words(self,sentence, num_sentences=20, top_k=5):
+        salient_words = identify_salient_words_with_idx(sentence)
+
+        # Check if there are no salient words
+        if not salient_words:
+            print("No salient words identified in the sentence.")
+            return [sentence] * num_sentences  # or return an appropriate message or empty list
+
+        random.shuffle(salient_words)
+
+        min_num_sents = 0
+        if len(salient_words) < num_sentences:
+            min_num_sents = 1
+
+        try:
+            num_sent_per_word = constrained_sum_sample_pos(
+                len(salient_words), num_sentences, low=min_num_sents
+            )
+        except ValueError as e:
+            print(f"Error: {e}")
+            return []
+
+        # Remove word with 0 sentence
+        num_sent_per_word = [n for n in num_sent_per_word if n != 0]
+        salient_words = [
+            w for idx, w in enumerate(salient_words) if idx < len(num_sent_per_word)
+        ]
+
+        masked_sentences = self.mask_words(sentence, salient_words)
+
+        inputs = self.berttokenizer(masked_sentences, return_tensors="pt", padding=True)
+        inputs = inputs.to(self.device)
+
+        with torch.no_grad():
+            outputs = self.bertmodel(**inputs)
+            logits = outputs.logits
+
+        inputs = inputs.to("cpu")
+        logits = logits.to("cpu")
+
+        input_ids = inputs["input_ids"]
+        mask_token_indices = input_ids == self.berttokenizer.mask_token_id
+        assert (mask_token_indices.sum(-1) == 1).all()  # Only one masked word per sentence
+
+        mask_token_logits = logits[mask_token_indices]
+        generated_sentences = set()
+
+        for mt_logit, m_sent, n_sent, (_, original_word) in zip(
+            mask_token_logits, masked_sentences, num_sent_per_word, salient_words
+        ):
+            top_predictions = mt_logit.topk(n_sent * 5 + 1).indices.tolist()
+            count = 0
+            for predicted_index in top_predictions:
+                predicted_token = self.berttokenizer.decode([predicted_index]).strip()
+                if not predicted_token.isalnum() or predicted_token.lower().strip() == original_word.lower().strip():
+                    continue
+                if count >= n_sent:
+                    break
+                new_sentence = m_sent.replace(self.berttokenizer.mask_token, predicted_token, 1)
+                sim = self.sentencoder.get_sim(new_sentence, sentence)
+                if sim < 0.80 or sim > 1.0:
+                    continue
+                generated_sentences.add(new_sentence)
+                count += 1
+
+        result_list = list(generated_sentences)
+        if len(result_list) < num_sentences:
+            last_sentence = result_list[-1] if result_list else sentence
+            result_list.extend([last_sentence] * (num_sentences - len(result_list)))
+
+        return result_list
 
     
 
-    def predict_masked_sentences_for_salient_words(self, sentence, num_sentences=20, top_k=5):
+    # def predict_masked_sentences_for_salient_words(self, sentence, num_sentences=20, top_k=5):
 
-            salient_words = identify_salient_words(sentence)
-            generated_sentences = set()  # Use a set to avoid duplicates
-            max_attempts = 100
-            attempts = 0
+    #         salient_words = identify_salient_words(sentence)
+    #         generated_sentences = set()  # Use a set to avoid duplicates
+    
 
-            while len(generated_sentences) < num_sentences and attempts < max_attempts:
-                word_to_mask = random.choice(salient_words) if salient_words else None
-                if not word_to_mask:
-                    break  # Exit if there are no salient words to mask
+    #         while len(generated_sentences) < num_sentences and salient_words:
+    #             word_to_mask = salient_words.pop()
+    #             if not word_to_mask:
+    #                 break  # Exit if there are no salient words to mask
 
-                masked_sentence = sentence.replace(word_to_mask, self.berttokenizer.mask_token, 1)
-                inputs = self.berttokenizer.encode_plus(masked_sentence, return_tensors="pt")
-                input_ids = inputs['input_ids'].to(self.device)
+    #             masked_sentence = sentence.replace(word_to_mask, self.berttokenizer.mask_token, 1)
+    #             inputs = self.berttokenizer.encode_plus(masked_sentence, return_tensors="pt")
+    #             input_ids = inputs['input_ids'].to(self.device)
 
-                with torch.no_grad():
-                    outputs = self.bertmodel(input_ids)
-                    predictions = outputs.logits
+    #             with torch.no_grad():
+    #                 outputs = self.bertmodel(input_ids)
+    #                 predictions = outputs.logits
 
-                mask_token_index = (input_ids == self.berttokenizer.mask_token_id).nonzero(as_tuple=True)[1]
-                top_predictions = predictions[0, mask_token_index, :].topk(top_k).indices.squeeze().tolist()
+    #             mask_token_index = (input_ids == self.berttokenizer.mask_token_id).nonzero(as_tuple=True)[1]
+    #             top_predictions = predictions[0, mask_token_index, :].topk(top_k).indices.squeeze().tolist()
 
-        #         for predicted_index in top_predictions:
-        #             predicted_token = berttokenizer.decode([predicted_index]).strip()
-        #             new_sentence = masked_sentence.replace(berttokenizer.mask_token, predicted_token, 1)
-        #             sim = sentencoder.get_sim(new_sentence, sentence)
-        #             if 0.70 <= sim <= 1:
-        #                 generated_sentences.add(new_sentence)  # Add only if it meets similarity criteria
+    #             for predicted_index in top_predictions:
+    #                 predicted_token = self.berttokenizer.decode([predicted_index]).strip()
+    #                 if predicted_token.isalnum():  # Filter out non-alphanumeric tokens
+    #                     new_sentence = masked_sentence.replace(self.berttokenizer.mask_token, predicted_token, 1)
+    #                     sim = self.sentencoder.get_sim(new_sentence, sentence)
+    #                     if 0.80 <= sim <= 1.0:
+    #                         generated_sentences.add(new_sentence)
+    #                     if len(generated_sentences) >= num_sentences:
+    #                         break
 
-        #             if len(generated_sentences) >= num_sentences:
-        #                 break  # Break if we have enough sentences
+    #             attempts += 1
 
-        #     return list(generated_sentences)
-                for predicted_index in top_predictions:
-                    predicted_token = self.berttokenizer.decode([predicted_index]).strip()
-                    if predicted_token.isalnum():  # Filter out non-alphanumeric tokens
-                        new_sentence = masked_sentence.replace(self.berttokenizer.mask_token, predicted_token, 1)
-                        sim = self.sentencoder.get_sim(new_sentence, sentence)
-                        if 0.80 <= sim <= 1.0:
-                            generated_sentences.add(new_sentence)
-                        if len(generated_sentences) >= num_sentences:
-                            break
+    #         result_list = list(generated_sentences)
+    #         if len(result_list) < num_sentences:
+    #             # If not enough sentences, replicate the last one until reaching the desired number
+    #             last_sentence = result_list[-1] if result_list else sentence
+    #             result_list.extend([last_sentence] * (num_sentences - len(result_list)))
 
-                attempts += 1
-
-            result_list = list(generated_sentences)
-            if len(result_list) < num_sentences:
-                # If not enough sentences, replicate the last one until reaching the desired number
-                last_sentence = result_list[-1] if result_list else sentence
-                result_list.extend([last_sentence] * (num_sentences - len(result_list)))
-
-            return result_list
+    #         return result_list
     
     def get_cls_loss(self, sentence: List[str], labels: List[str]):
         inputs = self.tokenizer(
@@ -231,19 +427,6 @@ class Problem:
             output = self.model(**inputs, labels = labels['input_ids'])
         return -output.loss
     
-    # def initialize_population(self, ori_text, num_individuals):
-    #     return self.predict_masked_sentences_for_salient_words(ori_text, num_individuals)
-
-    # def objective_cls(self, pop,guided_sentence):
-    #     cls_losses = []
-    #     for sentence in pop:
-    #         #text = context + tokenizer.eos_token + sentence
-    #         cls_loss = self.get_cls_loss([sentence], [guided_sentence])
-    #         cls_losses.append(cls_loss.item())
-    #     return cls_losses
-
-    #pad_token_id = self.tokenizer.pad_token_id
-    #eos_token_id = self.tokenizer.eos_token_id
 
     def remove_pad(self, s: torch.Tensor):
         return s[torch.nonzero(s != self.tokenizer.pad_token_id)].squeeze(1)
@@ -256,6 +439,19 @@ class Problem:
         else:
             return int(len(seq) - sum(seq.eq(self.tokenizer.pad_token_id))) - 1
 
+    def get_target_p(self, scores: list, pred_len: list, label: list):
+        targets = []
+        for i, s in enumerate(scores): # s: T X V
+            if pred_len[i] == 0:
+                targets.append(torch.tensor(0.0).to(self.device))
+            else:
+                # if self.pad_token_id != self.eos_token_id:
+                s[:, self.pad_token_id] = 1e-12
+                softmax_v = softmax(s) # T X V
+                target_p = torch.stack([softmax_v[idx, v] for idx, v in enumerate(label[:softmax_v.size(0)])])
+                target_p = target_p[:pred_len[i]]
+                targets.append(torch.sum(target_p))
+        return torch.stack(targets).detach().cpu().numpy()
 
     def get_prediction(self,sentence: Union[str, List[str]]):
             text = sentence
@@ -356,14 +552,25 @@ class Problem:
         return individual
     
 
+
     def calculate_objectives(self, individual):
         if individual and individual.sentence and individual.guided_sentence:
             individual.cls_loss = self.get_cls_loss([individual.sentence], [individual.guided_sentence]).item()
             scores, seqs, pred_len = self.compute_score([individual.sentence])
             individual.eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)[0].item()
-            #print(f"Calculated cls_loss: {individual.cls_loss}, eos_loss: {individual.eos_loss} for sentence: {individual.sentence}")
+            text = self.context + self.tokenizer.eos_token + individual.sentence
+            scores, seqs, p_len = self.compute_score([text])
+            individual.length = p_len[0]
+            label = self.tokenizer(individual.guided_sentence, truncation=True, max_length=1024, return_tensors='pt')
+            label = label['input_ids'][0] # (T, )
+            res = self.get_target_p(scores, p_len, label) # numpy array (N, )
+            #pred_acc.extend(res.tolist())
+            individual.accuracy = res.tolist()[0]
+
         else:
-            individual.cls_loss = float('inf')  
+            individual.accuracy = float('inf')
+            individual.length = float('inf')
+            individual.cls_loss = float('inf')
             individual.eos_loss = float('inf')
 
 class NSGA2Utils:
@@ -434,7 +641,8 @@ class NSGA2Utils:
             for individual in front:
                 individual.crowding_distance = 0
             
-            objectives = [(lambda x: x.cls_loss), (lambda x: x.eos_loss)]
+            objectives = [(lambda x: x.accuracy), (lambda x: x.length)]
+            #objectives = [(lambda x: x.cls_loss), (lambda x: x.eos_loss)]
             #print(objectives)
             #print(objectives[0],objectives[1])
             for obj_func in objectives:
@@ -641,6 +849,9 @@ class Evolution:
         """
         Check if all individuals in a front have the same features or if their objectives are not improving.
         """
+        if len(front)==1:
+            return False
+
         if not front:
             return False
 
@@ -688,7 +899,7 @@ class Evolution:
             new_population.extend(self.population.fronts[front_num][0:self.num_of_individuals - len(new_population)])
             returned_population = self.population
             for individual in returned_population.fronts[0]:
-                log_message = f"Sentence: '{individual.sentence}', CLS Loss: {individual.cls_loss}, EOS Loss: {individual.eos_loss}"
+                log_message = f"Sentence: '{individual.sentence}', Accuracy: {individual.accuracy}, Length: {individual.length}"
                 self.log_and_save_gen(log_message)
             self.population = new_population
             self.plot_generation(self.population, i)
@@ -701,20 +912,28 @@ class Evolution:
         return returned_population.fronts[0] if returned_population else self.population.fronts[0]
     
     def plot_generation(self, population, generation):
-        cls_losses = [individual.cls_loss for individual in population.population]
-        eos_losses = [individual.eos_loss for individual in population.population]
+        pred_acc = [individual.accuracy for individual in population.population]
+        pred_len = [individual.length for individual in population.population]
+
+        F = np.zeros((len(pred_acc), len(pred_acc)))
+        F[:, 0] = pred_acc
+        F[:, 1] = pred_len
+        F = np.array(F)
+        F[:, 1] *= -1
+        ids_fr0 = get_front_0(F)
+        fr0 = F[ids_fr0]
 
         plt.figure(figsize=(10, 6))
-        plt.scatter(cls_losses, eos_losses, label=f'Generation {generation + 1}')
-        plt.xlim(-8, 0)  # Adjust the scale for CLS Loss
-        plt.ylim(-0.01, 0.05)    # Adjust the scale for EOS Loss
-        plt.xlabel('CLS Loss')
-        plt.ylabel('EOS Loss')
-        plt.title('Population Evolution Over Generations')
+        plt.scatter(pred_len, pred_acc, label=f'Generation {generation + 1}')
+        plt.scatter(-fr0[:, 1], fr0[:, 0], facecolor='none', edgecolor='red', s=40, label=f'Front 0 {generation + 1}')
+#         plt.xlim(15, 40)  # Adjust the scale for CLS Loss
+#         plt.ylim(0, 5)    # Adjust the scale for EOS Loss
+        plt.title('Mutated Sentences Evaluated by Two Objectives')
+        plt.xlabel('Length')
+        plt.ylabel('Accuracy')
         plt.legend()
         plt.grid(True)
-        plt.pause(0.001)
-        plt.clf()  # Clear the figure for the next plot
+        plt.show()
 
     
     

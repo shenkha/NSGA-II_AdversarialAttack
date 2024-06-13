@@ -31,7 +31,7 @@ from typing import Union, List, Tuple
 from datasets import load_dataset, Dataset
 import evaluate
 from DialogueAPI import dialogue
-import nsga2
+import nsga2_new
 # from attacker.DGSlow import WordAttacker, StructureAttacker
 # from attacker.PWWS import PWWSAttacker
 # from attacker.SCPN import SCPNAttacker
@@ -296,17 +296,21 @@ class DGAttackEval(DGDataset):
             # print("Pop:", pop)
             # print("Candidate:", best_individual)
             
-            problem = nsga2.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device)
+            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device)
 
-            evolution = nsga2.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=5, num_of_individuals=args.num_ind, num_of_tour_particips=2,
+            evolution = nsga2_new.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=5, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5 )
 
             resulting_front = evolution.evolve()
             result = []
             for individual in resulting_front:
-                result.append((individual.sentence,individual.eos_loss, individual.cls_loss))
+                result.append((individual.sentence,individual.accuracy, individual.length))
                 #print(individual.sentence, individual.cls_loss, individual.eos_loss)
-            sorted_data = sorted(result, key=lambda x: x[1])
+            data_with_fitness = [(sentence, accuracy, length, length / accuracy) for sentence, accuracy, length in result]
+
+            # Sort based on the fitness score (fourth tuple element), in descending order
+            sorted_data = sorted(data_with_fitness, key=lambda x: x[3], reverse=True)
+            #sorted_data = sorted(result, key=lambda x: x[1])
             new_free_message = sorted_data[0][0]
 
             new_text = original_context + self.tokenizer.eos_token + new_free_message
@@ -498,7 +502,7 @@ if __name__ == "__main__":
     parser.add_argument("--resume", action="store_true", help="Resume from the last processed entry")
     parser.add_argument("--resume_log_dir", type=str,
                         default="/kaggle/working/results/logging",
-                        help="Output directory")
+                        help="Outpu t directory")
 #     parser.add_argument("--eos_weight", type=float, default=0.8, help="Weight for EOS gradient")
 #     parser.add_argument("--cls_weight", type=float, default=0.2, help="Weight for classification gradient")
 #     parser.add_argument("--delta", type=float, default=0.5, help="Threshold for adaptive search strategy")
