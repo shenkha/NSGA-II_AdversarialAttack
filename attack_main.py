@@ -43,7 +43,7 @@ import nsga2_new
 # from attacker.MAYA import MAYAAttacker
 # from attacker.UAT import UATAttacker
 from DG_dataset import DGDataset
-
+import re
 DATA2NAME = {
     "blended_skill_talk": "BST",
     "conv_ai_2": "ConvAI2",
@@ -348,30 +348,165 @@ class DGAttackEval(DGDataset):
             self.cos_sims.append(cos_sim)
             self.total_pairs += 1
 
+    def adv_load_metrics_and_find_last_entry(self,log_file_path):
+        metrics = {
+            "adv_lens": [],
+            "adv_bleus": [],
+            "adv_rouges": [],
+            "adv_meteors": [],
+            "adv_times": [],
+            "cos_sims": [],
+            "total_pairs": 0,
+            "att_success": 0,
+        }
+        last_dialogue = None
+        capture_next_metrics = False  # Flag to determine if next metrics should be captured
+        attack_failed_pattern = re.compile(r'Attack failed!')
+        attack_failed = 0
+        with open(log_file_path, "r") as file:
+            for line in file:
+                if "Dialogue history:" in line:
+                    last_dialogue = line.strip().split(": ")[1]
+
+                if "U'--" in line:
+                    # Capture cosine similarity
+                    cos_sim_match = re.search(r'cosine: ([0-9.]+)', line)
+                    if cos_sim_match:
+                        metrics['cos_sims'].append(float(cos_sim_match.group(1)))
+                        if float(cos_sim_match.group(1)) < 0.7:
+                            attack_failed +=1
+                    capture_next_metrics = True  # Set flag to capture next metrics
+
+                elif attack_failed_pattern.search(line):
+                    #metrics['att_success'] += 1  # Counting successful attacks inversely by 'Attack failed!'
+                    attack_failed += 1
+
+                elif capture_next_metrics:
+                    metric_match = re.search(r'\(length: (\d+), latency: ([0-9.]+), BLEU: ([0-9.]+), ROUGE: ([0-9.]+), METEOR: ([0-9.]+)\)', line)
+                    if metric_match:
+                        metrics['adv_lens'].append(float(metric_match.group(1)))
+                        metrics['adv_times'].append(float(metric_match.group(2)))
+                        metrics['adv_bleus'].append(float(metric_match.group(3)))
+                        metrics['adv_rouges'].append(float(metric_match.group(4)))
+                        metrics['adv_meteors'].append(float(metric_match.group(5)))
+                        metrics['total_pairs'] += 1  # Increment counter for each adv sample processed
+                        capture_next_metrics = False  # Reset flag after capturing
+        metrics['att_success'] = metrics['total_pairs'] - attack_failed  # Adjusting successful attack count
+        return last_dialogue, metrics
+
+    import re
+
+    def ori_load_metrics_and_find_last_entry(self, log_file_path):
+        metrics = {
+            "ori_lens": [],
+            "ori_bleus": [],
+            "ori_rouges": [],
+            "ori_meteors": [],
+            "ori_times": [],
+            "total_pairs": 0
+        }
+        last_dialogue = None
+        capture_next_metrics = False
+        with open(log_file_path, "r") as file:
+            for line in file:
+                if "Dialogue history:" in line:
+                    last_dialogue = line.strip().split(": ")[1]
+
+                if "U--" in line:
+                    capture_next_metrics = True
+                elif capture_next_metrics:
+                    metric_match = re.search(r'\(length: (\d+), latency: ([0-9.]+), BLEU: ([0-9.]+), ROUGE: ([0-9.]+), METEOR: ([0-9.]+)\)', line)
+                    if metric_match:
+                        metrics['ori_lens'].append(int(metric_match.group(1)))
+                        metrics['ori_times'].append(float(metric_match.group(2)))
+                        metrics['ori_bleus'].append(float(metric_match.group(3)))
+                        metrics['ori_rouges'].append(float(metric_match.group(4)))
+                        metrics['ori_meteors'].append(float(metric_match.group(5)))
+                        metrics['total_pairs'] += 1  # Increment each time an original sentence metrics are captured
+                        capture_next_metrics = False
+
+        return last_dialogue, metrics
+
+    def find_start_index(self,test_dataset, last_dialogue):
+        for i, instance in tqdm(enumerate(test_dataset)):
+            num_entries, total_entries, context, prev_utt_pc = self.prepare_context(instance)
+            for entry_idx in range(num_entries):
+                free_message, guided_message, original_context, references = self.prepare_entry(
+                        instance,
+                        entry_idx,
+                        context,
+                        prev_utt_pc,
+                        total_entries,
+                )
+                if guided_message is None:
+                    continue
+
+                prev_utt_pc += [
+                    free_message,
+                    guided_message,
+                ]
+
+                if original_context == last_dialogue:
+                    return i, original_context
+                    # Log for debugging
+                #print(f"Checking context: {original_context} against last_dialogue: {last_dialogue}")
+                print("\nDialogue history: {}".format(original_context))
+                print("\nLast Dialogue: {}".format(last_dialogue))
+        return -1, None  # If no match found
+    
 
     def generation(self, test_dataset: Dataset):
-        if self.dataset == "empathetic_dialogues":
-            test_dataset = self.group_ED(test_dataset)
+        last_dialogue = None
+        if args.resume:
+            start_index = 0
+            ids = random.sample(range(len(test_dataset)), self.max_num_samples)
+            test_dataset = test_dataset.select(ids)
+            last_dialogue, adv_metrics = self.adv_load_metrics_and_find_last_entry(self.args.resume_log_dir)
+            last_dialogue, ori_metrics = self.ori_load_metrics_and_find_last_entry(self.args.resume_log_dir)
+            # Extend current metrics with the loaded ones
+            self.ori_lens.extend(adv_metrics['adv_lens'])
+            self.adv_time.extend(adv_metrics['adv_times'])
+            self.adv_bleus.extend(adv_metrics['adv_bleus'])
+            self.adv_rouges.extend(adv_metrics['adv_rouges'])
+            self.adv_meteors.extend(adv_metrics['adv_meteors'])
+            self.cos_sims.extend(adv_metrics['cos_sims'])
+            self.total_pairs += adv_metrics['total_pairs']
 
-        # Sample test dataset
-        ids = random.sample(range(len(test_dataset)), self.max_num_samples)
-        test_dataset = test_dataset.select(ids)
-        print("Test dataset: ", test_dataset)
-        for i, instance in tqdm(enumerate(test_dataset)):
-            self.generation_step(instance)
-        #total_samples = len(test_dataset)
+            self.ori_lens.append(ori_metrics['ori_lens'])
+            self.ori_bleus.append(ori_metrics['ori_bleus'])
+            self.ori_rouges.append(ori_metrics['ori_rouges'])
+            self.ori_meteors.append(ori_metrics['ori_meteors'])
+            self.ori_time.append(ori_metrics['ori_times'])
 
-        # Check if the maximum number of samples equals the dataset size
-        # if self.max_num_samples == total_samples:
-        #     print("Using the full dataset without sampling.")
-        # else:
-        #     # Sample the dataset if the number of max samples is less than the total
-        #     ids = random.sample(range(total_samples), min(self.max_num_samples, total_samples))
-        #     test_dataset = test_dataset.select(ids)
+            # Update log file to a new file to avoid overlap
+            #new_log_filename = os.path.splitext(self.args.resume_log_dir)[0] + "_continued.txt"
+            #self.write_file = open(new_log_filename, "w")
+            print(f"Resuming from: {last_dialogue}, logging to new file")
 
-        # print("Test dataset: ", test_dataset)
-        # for i, instance in tqdm(enumerate(test_dataset)):
-        #     self.generation_step(instance)
+            # ids = random.sample(range(len(test_dataset)), self.max_num_samples)
+            # test_dataset = test_dataset.select(ids)
+            print("Test dataset: ", test_dataset)
+            print("LENGTH DATASET:", len(test_dataset))
+
+            if last_dialogue:
+            # Iterate through dataset to find where this history matches
+                index, found_context = self.find_start_index(test_dataset, last_dialogue)
+                if index != -1:
+                    print(f"Resuming from index: {index}, context: {found_context}")
+                    start_index = index
+                else:
+                    print("No matching context found. Please check the 'last_dialogue' or dataset processing.")
+
+            for i, instance in tqdm(enumerate(test_dataset)):
+                if i >= start_index:
+                    self.generation_step(instance)
+
+        else:
+            ids = random.sample(range(len(test_dataset)), self.max_num_samples)
+            test_dataset = test_dataset.select(ids)
+            print("Test dataset: ", test_dataset)
+            for i, instance in tqdm(enumerate(test_dataset)):
+                self.generation_step(instance)
 
         Ori_len = np.mean(self.ori_lens)
         Adv_len = np.mean(self.adv_lens)
@@ -393,6 +528,7 @@ class DGAttackEval(DGDataset):
             Cos_sims, Adv_len, Adv_t, Adv_bleu, Adv_rouge, Adv_meteor,
         ))
         self.log_and_save("Attack success rate: {:.2f}%".format(100*self.att_success/self.total_pairs))
+
     
 def main(args: argparse.Namespace):
         random.seed(args.seed)
