@@ -456,6 +456,9 @@ class DGAttackEval(DGDataset):
     
 
     def generation(self, test_dataset: Dataset):
+        if self.dataset == "empathetic_dialogues":
+            test_dataset = self.group_ED(test_dataset)
+            
         last_dialogue = None
         if args.resume:
             start_index = 0
