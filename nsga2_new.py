@@ -555,9 +555,9 @@ class Problem:
 
     def calculate_objectives(self, individual):
         if individual and individual.sentence and individual.guided_sentence:
-            individual.cls_loss = self.get_cls_loss([individual.sentence], [individual.guided_sentence]).item()
+            #individual.cls_loss = self.get_cls_loss([individual.sentence], [individual.guided_sentence]).item()
             scores, seqs, pred_len = self.compute_score([individual.sentence])
-            individual.eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)[0].item()
+            #individual.eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)[0].item()
             text = self.context + self.tokenizer.eos_token + individual.sentence
             scores, seqs, p_len = self.compute_score([text])
             individual.length = p_len[0]

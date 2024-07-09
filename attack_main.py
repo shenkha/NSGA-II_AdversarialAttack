@@ -165,7 +165,9 @@ class DGAttackEval(DGDataset):
             #fitness = args.fitness if att_method == 'structure' else 'performance'
             select_beams = args.select_beams
             max_num_samples = args.max_num_samples
-            att_method = "NSGA-II"
+            num_gen = args.num_gen
+            num_ind = args.num_ind
+            att_method = "NSGA-II_newObj_newBERT_" +  str(num_gen)  + "gen_"  + str(num_ind) + "ind_" 
             file_path = f"{out_dir}/{att_method}_{select_beams}_{model_n}_{dataset_n}_{max_num_samples}.txt"
             self.write_file_path = file_path
 
@@ -298,7 +300,7 @@ class DGAttackEval(DGDataset):
             
             problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device)
 
-            evolution = nsga2_new.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=5, num_of_individuals=args.num_ind, num_of_tour_particips=2,
+            evolution = nsga2_new.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=args.num_gen, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5 )
 
             resulting_front = evolution.evolve()
@@ -497,6 +499,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=2019, help="Random seed")
     parser.add_argument("--objective", type=str, default="cls", choices=["cls", "eos"], help="Objective")
     parser.add_argument("--num_ind", type=int, default=20, help="Number of Individuals")
+    parser.add_argument("--num_gen", type=int, default=5, help="Number of Individuals")
     parser.add_argument("--crossover_flag", type=int, default=0, help="Whether to use Crossover or not")
     parser.add_argument("--device", type=str,default="cuda",help="Determine which GPU to use")
     parser.add_argument("--resume", action="store_true", help="Resume from the last processed entry")
