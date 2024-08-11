@@ -19,6 +19,8 @@ from attack_main import SentenceEncoder
 softmax = nn.Softmax(dim=1)
 bce_loss = nn.BCELoss()
 import numpy as np
+from nltk.corpus import wordnet as wn
+
 
 def get_front_0(F):
         l = len(F)
@@ -48,7 +50,31 @@ def find_the_better(x, y):
             return 1
         return 0  # True - False
 
-immutable_words = {'was', 'were', 'am', 'is', 'are', 'been', 'being', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
+immutable_words = {'a', 'about', 'above', 'across', 'after', 'afterwards', 'again', 'against', 'ain', 'all', 'almost',
+                'alone', 'along', 'already', 'also', 'although', 'am', 'among', 'amongst', 'an', 'and', 'another',
+                'any', 'anyhow', 'anyone', 'anything', 'anyway', 'anywhere', 'are', 'aren', "aren't", 'around', 'as',
+                'at', 'back', 'been', 'before', 'beforehand', 'behind', 'being', 'below', 'beside', 'besides',
+                'between', 'beyond', 'both', 'but', 'by', 'can', 'cannot', 'could', 'couldn', "couldn't", 'd', 'didn',
+                "didn't", 'doesn', "doesn't", 'don', "don't", 'down', 'due', 'during', 'either', 'else', 'elsewhere',
+                'empty', 'enough', 'even', 'ever', 'everyone', 'everything', 'everywhere', 'except', 'first', 'for',
+                'former', 'formerly', 'from', 'hadn', "hadn't", 'hasn', "hasn't", 'haven', "haven't", 'he', 'hence',
+                'her', 'here', 'hereafter', 'hereby', 'herein', 'hereupon', 'hers', 'herself', 'him', 'himself', 'his',
+                'how', 'however', 'hundred', 'i', 'if', 'in', 'indeed', 'into', 'is', 'isn', "isn't", 'it', "it's",
+                'its', 'itself', 'just', 'latter', 'latterly', 'least', 'll', 'may', 'me', 'meanwhile', 'mightn',
+                "mightn't", 'mine', 'more', 'moreover', 'most', 'mostly', 'must', 'mustn', "mustn't", 'my', 'myself',
+                'namely', 'needn', "needn't", 'neither', 'never', 'nevertheless', 'next', 'no', 'nobody', 'none',
+                'noone', 'nor', 'not', 'nothing', 'now', 'nowhere', 'o', 'of', 'off', 'on', 'once', 'one', 'only',
+                'onto', 'or', 'other', 'others', 'otherwise', 'our', 'ours', 'ourselves', 'out', 'over', 'per',
+                'please', 's', 'same', 'shan', "shan't", 'she', "she's", "should've", 'shouldn', "shouldn't", 'somehow',
+                'something', 'sometime', 'somewhere', 'such', 't', 'than', 'that', "that'll", 'the', 'their', 'theirs',
+                'them', 'themselves', 'then', 'thence', 'there', 'thereafter', 'thereby', 'therefore', 'therein',
+                'thereupon', 'these', 'they', 'this', 'those', 'through', 'throughout', 'thru', 'thus', 'to', 'too',
+                'toward', 'towards', 'under', 'unless', 'until', 'up', 'upon', 'used', 've', 'was', 'wasn', "wasn't",
+                'we', 'were', 'weren', "weren't", 'what', 'whatever', 'when', 'whence', 'whenever', 'where',
+                'whereafter', 'whereas', 'whereby', 'wherein', 'whereupon', 'wherever', 'whether', 'which', 'while',
+                'whither', 'who', 'whoever', 'whole', 'whom', 'whose', 'why', 'with', 'within', 'without', 'won',
+                "won't", 'would', 'wouldn', "wouldn't", 'y', 'yet', 'you', "you'd", "you'll", "you're", "you've",
+                'your', 'yours', 'yourself', 'yourselves'}
 
 def identify_salient_words(sentence):
     # Tokenize the sentence
@@ -100,7 +126,31 @@ def identify_salient_words_with_idx(sentence):
         "JJS",
     }
 
-    immutable_words = {'was', 'were', 'am', 'is', 'are', 'been', 'being', 'be', 'have', 'has', 'had', 'do', 'does', 'did'}
+    immutable_words = {'a', 'about', 'above', 'across', 'after', 'afterwards', 'again', 'against', 'ain', 'all', 'almost',
+                'alone', 'along', 'already', 'also', 'although', 'am', 'among', 'amongst', 'an', 'and', 'another',
+                'any', 'anyhow', 'anyone', 'anything', 'anyway', 'anywhere', 'are', 'aren', "aren't", 'around', 'as',
+                'at', 'back', 'been', 'before', 'beforehand', 'behind', 'being', 'below', 'beside', 'besides',
+                'between', 'beyond', 'both', 'but', 'by', 'can', 'cannot', 'could', 'couldn', "couldn't", 'd', 'didn',
+                "didn't", 'doesn', "doesn't", 'don', "don't", 'down', 'due', 'during', 'either', 'else', 'elsewhere',
+                'empty', 'enough', 'even', 'ever', 'everyone', 'everything', 'everywhere', 'except', 'first', 'for',
+                'former', 'formerly', 'from', 'hadn', "hadn't", 'hasn', "hasn't", 'haven', "haven't", 'he', 'hence',
+                'her', 'here', 'hereafter', 'hereby', 'herein', 'hereupon', 'hers', 'herself', 'him', 'himself', 'his',
+                'how', 'however', 'hundred', 'i', 'if', 'in', 'indeed', 'into', 'is', 'isn', "isn't", 'it', "it's",
+                'its', 'itself', 'just', 'latter', 'latterly', 'least', 'll', 'may', 'me', 'meanwhile', 'mightn',
+                "mightn't", 'mine', 'more', 'moreover', 'most', 'mostly', 'must', 'mustn', "mustn't", 'my', 'myself',
+                'namely', 'needn', "needn't", 'neither', 'never', 'nevertheless', 'next', 'no', 'nobody', 'none',
+                'noone', 'nor', 'not', 'nothing', 'now', 'nowhere', 'o', 'of', 'off', 'on', 'once', 'one', 'only',
+                'onto', 'or', 'other', 'others', 'otherwise', 'our', 'ours', 'ourselves', 'out', 'over', 'per',
+                'please', 's', 'same', 'shan', "shan't", 'she', "she's", "should've", 'shouldn', "shouldn't", 'somehow',
+                'something', 'sometime', 'somewhere', 'such', 't', 'than', 'that', "that'll", 'the', 'their', 'theirs',
+                'them', 'themselves', 'then', 'thence', 'there', 'thereafter', 'thereby', 'therefore', 'therein',
+                'thereupon', 'these', 'they', 'this', 'those', 'through', 'throughout', 'thru', 'thus', 'to', 'too',
+                'toward', 'towards', 'under', 'unless', 'until', 'up', 'upon', 'used', 've', 'was', 'wasn', "wasn't",
+                'we', 'were', 'weren', "weren't", 'what', 'whatever', 'when', 'whence', 'whenever', 'where',
+                'whereafter', 'whereas', 'whereby', 'wherein', 'whereupon', 'wherever', 'whether', 'which', 'while',
+                'whither', 'who', 'whoever', 'whole', 'whom', 'whose', 'why', 'with', 'within', 'without', 'won',
+                "won't", 'would', 'wouldn', "wouldn't", 'y', 'yet', 'you', "you'd", "you'll", "you're", "you've",
+                'your', 'yours', 'yourself', 'yourselves'}
 
     # Identify salient words based on POS tags
 
@@ -137,9 +187,13 @@ def string_replace(text, _from, _to, idx):
     part2 = _from.join(arr[nth:])
     return part1 + _to + part2
 
-
-
-
+def get_word_antonyms(word: str):
+    antonyms_lists = set()
+    for syn in wn.synsets(word):
+        for l in syn.lemmas():
+            if l.antonyms():
+                antonyms_lists.add(l.antonyms()[0].name())
+    return list(antonyms_lists)
 
 
 class Individual(object):
@@ -219,7 +273,7 @@ class Population:
 
 class Problem:
 
-    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device):
+    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task):
         self.context  = context 
         self.original_sentence = original_sentence
         self.guided_sentence = guided_sentence
@@ -228,10 +282,14 @@ class Problem:
         self.pad_token_id = self.tokenizer.pad_token_id
         self.eos_token_id = self.tokenizer.eos_token_id
         self.device = device
-        self.task = "seq2seq"
+        self.task = task
+        self.max_len = max_len
+        self.eos_token = self.tokenizer.eos_token
         self.sentencoder = SentenceEncoder(model_name='paraphrase-distilroberta-base-v1', device = self.device)
         self.berttokenizer = AutoTokenizer.from_pretrained('bert-large-uncased')
         self.bertmodel = AutoModelForMaskedLM.from_pretrained('bert-large-uncased').eval().to(self.device)
+        self.num_beams = 1
+        self.num_beam_groups = 1
         
 
 #     def generate_individual(self):
@@ -265,7 +323,7 @@ class Problem:
             effective_text,
             return_tensors="pt",
             truncation=True,
-            max_length=1023,
+            max_length=self.max_len,
         )
         input_ids = inputs.input_ids.to(self.device)
         self.model = self.model.to(self.device)
@@ -275,10 +333,10 @@ class Problem:
                 self.model,
                 input_ids,
                 early_stopping=False,
-                num_beams=1,
-                num_beam_groups=1,
+                num_beams=self.num_beams,
+                num_beam_groups=self.num_beam_groups,
                 use_cache=True,
-                max_length=1024,
+                max_length=self.max_len,
             )
         if self.task == 'seq2seq':
             output = self.tokenizer.batch_decode(outputs['sequences'], skip_special_tokens=True)[0]
@@ -342,9 +400,12 @@ class Problem:
         ):
             top_predictions = mt_logit.topk(n_sent * 5 + 1).indices.tolist()
             count = 0
+            antonyms = get_word_antonyms(original_word)
             for predicted_index in top_predictions:
                 predicted_token = self.berttokenizer.decode([predicted_index]).strip()
                 if not predicted_token.isalnum() or predicted_token.lower().strip() == original_word.lower().strip():
+                    continue
+                if predicted_token in antonyms:  # Filter out antonyms
                     continue
                 if count >= n_sent:
                     break
@@ -405,28 +466,7 @@ class Problem:
     #             result_list.extend([last_sentence] * (num_sentences - len(result_list)))
 
     #         return result_list
-    
-    def get_cls_loss(self, sentence: List[str], labels: List[str]):
-        inputs = self.tokenizer(
-                sentence,
-                return_tensors = "pt",
-                padding = True,
-                truncation = True,
-                max_length = 1024,
-        ).to(self.device)
-
-        labels = self.tokenizer(
-                labels,
-                return_tensors = "pt",
-                padding = True,
-                truncation = True,
-                max_length = 1024,
-        ).to(self.device)
-
-        with torch.no_grad():
-            output = self.model(**inputs, labels = labels['input_ids'])
-        return -output.loss
-    
+      
 
     def remove_pad(self, s: torch.Tensor):
         return s[torch.nonzero(s != self.tokenizer.pad_token_id)].squeeze(1)
@@ -454,32 +494,41 @@ class Problem:
         return torch.stack(targets).detach().cpu().numpy()
 
     def get_prediction(self,sentence: Union[str, List[str]]):
-            text = sentence
+            if self.task == 'seq2seq':
+                text = sentence
+            else:
+                if isinstance(sentence, list):
+                    text = [s + self.eos_token for s in sentence]
+                elif isinstance(sentence, str):
+                    text = sentence + self.eos_token
+                else:
+                    raise ValueError("sentence should be a list of string or a string")
+                
             inputs = self.tokenizer(
                 text,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=1023,
+                max_length=self.max_len,
             )
             input_ids = inputs['input_ids'].to(self.device)
             # ['sequences', 'sequences_scores', 'scores', 'beam_indices']
-            outputs = dialogue(
+            with torch.no_grad():
+                outputs = dialogue(
                 self.model,
                 input_ids,
                 early_stopping=False,
-                pad_token_id=self.tokenizer.pad_token_id,
-                num_beams=1,
-                num_beam_groups=1,
+                num_beams=self.num_beams,
+                num_beam_groups=self.num_beam_groups,
                 use_cache=True,
-                max_length=1024,
-            )
+                max_length=self.max_len,
+                )
 
-            seqs = outputs['sequences'].detach()
-    #         if self.task == 'seq2seq':
-    #             seqs = outputs['sequences'].detach()
-    #         else:
-    #             seqs = outputs['sequences'][:, input_ids.shape[-1]:].detach()
+            
+            if self.task == 'seq2seq':
+                seqs = outputs['sequences'].detach()
+            else:
+                seqs = outputs['sequences'][:, input_ids.shape[-1]:].detach()
 
             seqs = [self.remove_pad(seq) for seq in seqs]
             out_scores = outputs['scores']
@@ -491,7 +540,9 @@ class Problem:
             num_beams =  1
             batch_size = len(text)
             index_list = [i * 1 for i in range(batch_size + 1)]
-            pred_len, seqs, out_scores = self.get_prediction(text)
+
+            with torch.no_grad():
+                pred_len, seqs, out_scores = self.get_prediction(text)
 
             scores = [[] for _ in range(batch_size)]
             for out_s in out_scores:
@@ -512,33 +563,14 @@ class Problem:
                 scores, seqs, pred_len = [], [], []
                 for start in range(0, total_size, batch_size):
                     end = min(start + batch_size, total_size)
-                    score, seq, p_len = self.compute_batch_score(text[start: end])
+                    with torch.no_grad():
+                        score, seq, p_len = self.compute_batch_score(text[start: end])
                     pred_len.extend(p_len)
                     seqs.extend(seq)
                     scores.extend(score)
             else:
                 scores, seqs, pred_len = self.compute_batch_score(text)
             return scores, seqs, pred_len
-    def leave_eos_target_loss(self, scores: list, seqs: list, pred_len: list):
-            # loss = []
-            # for i, s in enumerate(scores): # s: T X V
-            #     if pred_len[i] == 0:
-            #         loss.append(torch.tensor(0.0, requires_grad=True).to(self.device))
-            loss = []
-            with torch.no_grad():  # Start of no gradient computation context
-                for i, s in enumerate(scores):  # s: T X V
-                    if pred_len[i] == 0:
-                        loss.append(torch.tensor(0.0).to(self.device))
-                else:
-                    s[:,self.tokenizer.pad_token_id] = 1e-12
-                    softmax_v = softmax(s)
-                    eos_p = softmax_v[:pred_len[i],self.tokenizer.eos_token_id]
-                    target_p = torch.stack([softmax_v[idx, v] for idx, v in enumerate(seqs[i][1:])])
-                    target_p = target_p[:pred_len[i]]
-                    pred = eos_p + target_p
-                    pred[-1] = pred[-1] / 2
-                    loss.append(bce_loss(pred, torch.zeros_like(pred)))
-            return loss
 
     def generate_unique_sentences(self,num_sentences):
         # Ensure this call generates the required number of unique sentences
@@ -556,12 +588,16 @@ class Problem:
     def calculate_objectives(self, individual):
         if individual and individual.sentence and individual.guided_sentence:
             #individual.cls_loss = self.get_cls_loss([individual.sentence], [individual.guided_sentence]).item()
-            scores, seqs, pred_len = self.compute_score([individual.sentence])
+            #scores, seqs, pred_len = self.compute_score([individual.sentence])
             #individual.eos_loss = self.leave_eos_target_loss(scores, seqs, pred_len)[0].item()
-            text = self.context + self.tokenizer.eos_token + individual.sentence
+            if self.task == "seq2seq":
+                sp_token = self.tokenizer.eos_token
+            else:
+                sp_token = '<SEP>'
+            text = self.context + sp_token + individual.sentence
             scores, seqs, p_len = self.compute_score([text])
             individual.length = p_len[0]
-            label = self.tokenizer(individual.guided_sentence, truncation=True, max_length=1024, return_tensors='pt')
+            label = self.tokenizer(individual.guided_sentence, truncation=True, max_length=self.max_len, return_tensors='pt')
             label = label['input_ids'][0] # (T, )
             res = self.get_target_p(scores, p_len, label) # numpy array (N, )
             #pred_acc.extend(res.tolist())
@@ -711,46 +747,11 @@ class NSGA2Utils:
         return children
 
     def __noncrossover(self, individual1, individual2):
-#         child1 = self.problem.generate_individual()
-#         child2 = self.problem.generate_individual()
-#         num_of_features = len(child1.features)
-#         genes_indexes = range(num_of_features)
-#         for i in genes_indexes:
-#             beta = self.__get_beta()
-#             x1 = (individual1.features[i] + individual2.features[i]) / 2
-#             x2 = abs((individual1.features[i] - individual2.features[i]) / 2)
-#             child1.features[i] = x1 + beta * x2
-#             child2.features[i] = x1 - beta * x2
-        #print("Creating crossover...")
-        split_point_1 = len(individual1.sentence.split()) // 2
-        split_point_2 = len(individual2.sentence.split()) // 2
-
-        part1_1 = individual1.sentence.split()[:split_point_1]
-        part1_2 = individual1.sentence.split()[split_point_2:]
-        part2_1 = individual2.sentence.split()[:split_point_2]
-        part2_2 = individual2.sentence.split()[split_point_1:]
-
-        child_sentence_1 = ' '.join(part1_1 + part1_2)
-        child_sentence_2 = ' '.join(part2_1 + part2_2)
-
-        child1 = self.problem.generate_individual_from_sentence(child_sentence_1)
-        child2 = self.problem.generate_individual_from_sentence(child_sentence_2)
-        #print(f"Child1 generated with sentence: {child1.sentence}")
-        #print(f"Child2 generated with sentence: {child2.sentence}")
+        child1 = self.problem.generate_individual_from_sentence(individual1.sentence)
+        child2 = self.problem.generate_individual_from_sentence(individual2.sentence)
         return child1, child2
     
     def __crossover(self, individual1, individual2):
-#         child1 = self.problem.generate_individual()
-#         child2 = self.problem.generate_individual()
-#         num_of_features = len(child1.features)
-#         genes_indexes = range(num_of_features)
-#         for i in genes_indexes:
-#             beta = self.__get_beta()
-#             x1 = (individual1.features[i] + individual2.features[i]) / 2
-#             x2 = abs((individual1.features[i] - individual2.features[i]) / 2)
-#             child1.features[i] = x1 + beta * x2
-#             child2.features[i] = x1 - beta * x2
-        #print("Creating crossover...")
         split_point_1 = len(individual1.sentence.split()) // 2
         split_point_2 = len(individual2.sentence.split()) // 2
 
@@ -775,21 +776,6 @@ class NSGA2Utils:
         return (2 * (1 - u)) ** (-1 / (self.crossover_param + 1))
 
     def __mutate(self, child):
-        #print("Creating mutate...")
-#         num_of_features = len(child.features)
-#         for gene in range(num_of_features):
-#             u, delta = self.__get_delta()
-#             if u < 0.5:
-#                 child.features[gene] += delta * (child.features[gene] - self.problem.variables_range[gene][0])
-#             else:
-#                 child.features[gene] += delta * (self.problem.variables_range[gene][1] - child.features[gene])
-#             if child.features[gene] < self.problem.variables_range[gene][0]:
-#                 child.features[gene] = self.problem.variables_range[gene][0]
-#             elif child.features[gene] > self.problem.variables_range[gene][1]:
-#                 child.features[gene] = self.problem.variables_range[gene][1]
-
-        #num_masks = self.problem.num_masks_func(child.sentence)
-        original = self.problem.original_sentence
         mutated_sentences  = self.problem.predict_masked_sentences_for_salient_words(child.sentence,self.num_of_individuals)
         #print(f"Mutated Sentences: {mutated_sentences}")
         #print(f"Mutating child sentence: {child.sentence}")
@@ -838,6 +824,7 @@ class Evolution:
         file_path = file_path_gen.split('.txt')[0]
         self.write_file_path_gen = file_path + "_Gen.txt"
         self.problem = problem
+        self.task = problem.task
     
     def log_and_save_gen(self,display: str):
         print(display)
@@ -872,8 +859,11 @@ class Evolution:
         self.log_and_save_gen("\nDialogue history: {}".format(self.problem.context))
         self.log_and_save_gen("U--{} \n(Ref: ['{}', ...])".format(self.problem.original_sentence, self.problem.guided_sentence))
             # Original generation
-        eos_token = self.problem.tokenizer.eos_token
-        text = self.problem.context + eos_token + self.problem.original_sentence
+        if self.task =="seq2seq":
+            sp_token = self.problem.tokenizer.eos_token
+        else:
+            sp_token = "<SEP>"
+        text = self.problem.context + sp_token + self.problem.original_sentence
         output, time_gap = self.problem.get_prediction_sen(text)
         self.log_and_save_gen("G--{}".format(output))
 

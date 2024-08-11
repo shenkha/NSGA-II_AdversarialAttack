@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 from typing import List
 import torch
+import json
 from transformers import (
     AutoConfig, 
     AutoTokenizer, 
@@ -16,6 +17,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForMaskedLM,
 )
+import re
 import random
 import numpy as np
 import torch
@@ -43,7 +45,7 @@ import nsga2_new
 # from attacker.MAYA import MAYAAttacker
 # from attacker.UAT import UATAttacker
 from DG_dataset import DGDataset
-import re
+
 DATA2NAME = {
     "blended_skill_talk": "BST",
     "conv_ai_2": "ConvAI2",
@@ -135,7 +137,7 @@ class DGAttackEval(DGDataset):
             self.args = args
             self.model = model
             self.device = args.device
-
+            self.task = task
             self.num_beams = args.num_beams
             self.num_beam_groups = args.num_beam_groups
             self.max_num_samples = args.max_num_samples
@@ -253,11 +255,15 @@ class DGAttackEval(DGDataset):
                 free_message,
                 guided_message,
             ]
+            
             self.log_and_save("\nDialogue history: {}".format(original_context))
             self.log_and_save("U--{} \n(Ref: ['{}', ...])".format(free_message, references[-1]))
             # Original generation
-            eos_token = self.tokenizer.eos_token
-            text = original_context + eos_token + free_message
+            if self.task == "seq2seq":
+                sp_token = self.tokenizer.eos_token
+            else:
+                sp_token = '<SEP>'
+            text = original_context + sp_token + free_message
             output, time_gap = self.get_prediction(text)
             self.log_and_save("G--{}".format(output))
 
@@ -298,7 +304,7 @@ class DGAttackEval(DGDataset):
             # print("Pop:", pop)
             # print("Candidate:", best_individual)
             
-            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device)
+            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device,args.max_len,self.task)
 
             evolution = nsga2_new.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=args.num_gen, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5 )
@@ -315,7 +321,7 @@ class DGAttackEval(DGDataset):
             #sorted_data = sorted(result, key=lambda x: x[1])
             new_free_message = sorted_data[0][0]
 
-            new_text = original_context + self.tokenizer.eos_token + new_free_message
+            new_text = original_context + sp_token + new_free_message
             cos_sim = self.sentencoder.get_sim(new_free_message, free_message)
             output, time_gap = self.get_prediction(new_text)
             if not output:
@@ -347,6 +353,7 @@ class DGAttackEval(DGDataset):
             self.adv_time.append(time_gap)
             self.cos_sims.append(cos_sim)
             self.total_pairs += 1
+
 
     def adv_load_metrics_and_find_last_entry(self,log_file_path):
         metrics = {
@@ -508,6 +515,8 @@ class DGAttackEval(DGDataset):
             ids = random.sample(range(len(test_dataset)), self.max_num_samples)
             test_dataset = test_dataset.select(ids)
             print("Test dataset: ", test_dataset)
+            # print("CHECKPOINT")
+            # print(self.task)
             for i, instance in tqdm(enumerate(test_dataset)):
                 self.generation_step(instance)
 
@@ -531,6 +540,8 @@ class DGAttackEval(DGDataset):
             Cos_sims, Adv_len, Adv_t, Adv_bleu, Adv_rouge, Adv_meteor,
         ))
         self.log_and_save("Attack success rate: {:.2f}%".format(100*self.att_success/self.total_pairs))
+
+        json.dump({}, open(f"{args.name}.json", 'w'))
 
     
 def main(args: argparse.Namespace):
@@ -642,6 +653,7 @@ if __name__ == "__main__":
     parser.add_argument("--crossover_flag", type=int, default=0, help="Whether to use Crossover or not")
     parser.add_argument("--device", type=str,default="cuda",help="Determine which GPU to use")
     parser.add_argument("--resume", action="store_true", help="Resume from the last processed entry")
+    parser.add_argument("--name", type=str,default="process1",help="Determine which GPU to use")
     parser.add_argument("--resume_log_dir", type=str,
                         default="/kaggle/working/results/logging",
                         help="Outpu t directory")
