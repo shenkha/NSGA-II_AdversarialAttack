@@ -304,7 +304,7 @@ class DGAttackEval(DGDataset):
             # print("Pop:", pop)
             # print("Candidate:", best_individual)
             
-            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device,args.max_len,self.task)
+            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device,args.max_len,self.task,args.acc_metric,self.bleu,self.rouge,self.meteor)
 
             evolution = nsga2_new.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=args.num_gen, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5 )
@@ -636,9 +636,9 @@ if __name__ == "__main__":
     parser.add_argument("--select_beams", type=int, default=2, help="Number of sentence beams to keep for each attack iteration")
     parser.add_argument("--num_beams", type=int, default=1, help="Number of beams for decoding in LLMs")
     parser.add_argument("--num_beam_groups", type=int, default=1, help="Number of beam groups for decoding in LLMs")
-#     parser.add_argument("--fitness", type=str, default="adaptive",
-#                         choices=["performance", "length", "random", "combined", "adaptive"],
-#                         help="Fitness function for selecting the best candidate")
+    parser.add_argument("--acc_metric", type=str, default="combined",
+                        choices=["bleu", "rouge", "meteor", "combined"],
+                        help="Fitness function for selecting the best candidate")
     parser.add_argument("--model_name_or_path", "-m", type=str, default="./DGSlow_Bartbase", help="Path to model")
     parser.add_argument("--dataset", "-d", type=str, default="blended_skill_talk",
                         choices=["blended_skill_talk", "conv_ai_2", "empathetic_dialogues", "AlekseyKorshuk/persona-chat"],

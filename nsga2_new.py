@@ -273,7 +273,7 @@ class Population:
 
 class Problem:
 
-    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task):
+    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task,acc_metric,bleu,rouge,meteor):
         self.context  = context 
         self.original_sentence = original_sentence
         self.guided_sentence = guided_sentence
@@ -290,6 +290,10 @@ class Problem:
         self.bertmodel = AutoModelForMaskedLM.from_pretrained('bert-large-uncased').eval().to(self.device)
         self.num_beams = 1
         self.num_beam_groups = 1
+        self.acc_metric = acc_metric
+        self.bleu = bleu
+        self.rouge = rouge
+        self.meteor = meteor
         
 
 #     def generate_individual(self):
@@ -423,49 +427,6 @@ class Problem:
 
         return result_list
 
-    
-
-    # def predict_masked_sentences_for_salient_words(self, sentence, num_sentences=20, top_k=5):
-
-    #         salient_words = identify_salient_words(sentence)
-    #         generated_sentences = set()  # Use a set to avoid duplicates
-    
-
-    #         while len(generated_sentences) < num_sentences and salient_words:
-    #             word_to_mask = salient_words.pop()
-    #             if not word_to_mask:
-    #                 break  # Exit if there are no salient words to mask
-
-    #             masked_sentence = sentence.replace(word_to_mask, self.berttokenizer.mask_token, 1)
-    #             inputs = self.berttokenizer.encode_plus(masked_sentence, return_tensors="pt")
-    #             input_ids = inputs['input_ids'].to(self.device)
-
-    #             with torch.no_grad():
-    #                 outputs = self.bertmodel(input_ids)
-    #                 predictions = outputs.logits
-
-    #             mask_token_index = (input_ids == self.berttokenizer.mask_token_id).nonzero(as_tuple=True)[1]
-    #             top_predictions = predictions[0, mask_token_index, :].topk(top_k).indices.squeeze().tolist()
-
-    #             for predicted_index in top_predictions:
-    #                 predicted_token = self.berttokenizer.decode([predicted_index]).strip()
-    #                 if predicted_token.isalnum():  # Filter out non-alphanumeric tokens
-    #                     new_sentence = masked_sentence.replace(self.berttokenizer.mask_token, predicted_token, 1)
-    #                     sim = self.sentencoder.get_sim(new_sentence, sentence)
-    #                     if 0.80 <= sim <= 1.0:
-    #                         generated_sentences.add(new_sentence)
-    #                     if len(generated_sentences) >= num_sentences:
-    #                         break
-
-    #             attempts += 1
-
-    #         result_list = list(generated_sentences)
-    #         if len(result_list) < num_sentences:
-    #             # If not enough sentences, replicate the last one until reaching the desired number
-    #             last_sentence = result_list[-1] if result_list else sentence
-    #             result_list.extend([last_sentence] * (num_sentences - len(result_list)))
-
-    #         return result_list
       
 
     def remove_pad(self, s: torch.Tensor):
@@ -478,6 +439,45 @@ class Problem:
             return int(len(seq) - sum(seq.eq(self.tokenizer.pad_token_id)))
         else:
             return int(len(seq) - sum(seq.eq(self.tokenizer.pad_token_id))) - 1
+        
+    def get_average_score(self,generated_sentences: list, reference_sentences: list, acc_metric):
+        scores = []
+
+        for gen_sentence, ref_sentence in zip(generated_sentences, reference_sentences):
+            # Calculate BLEU score
+            bleu_res = self.bleu.compute(
+                predictions=[gen_sentence],
+                references=[ref_sentence],
+                smooth=True,
+            )
+            #bleu_score = bleu_res['bleu']
+            bleu_score = bleu_res['bleu']
+            # Calculate ROUGE-L score
+            rouge_res = self.rouge.compute(
+                predictions=[gen_sentence],
+                references=[ref_sentence],
+            )
+            rouge_score = rouge_res['rougeL']
+
+            # Calculate METEOR score
+            meteor_res = self.meteor.compute(
+                predictions=[gen_sentence],
+                references=[ref_sentence],
+            )
+            meteor_score_value = meteor_res['meteor']
+
+            # Calculate the average of BLEU, ROUGE, and METEOR
+            average_score = (bleu_score + rouge_score + meteor_score_value) / 3.0
+            if acc_metric =="combined":
+                scores.append(average_score)
+            elif acc_metric == "bleu":
+                scores.append(bleu_score)
+            elif acc_metric == "rouge":
+                scores.append(rouge_score)
+            elif acc_metric == "meteor":
+                scores.append(meteor_score_value)
+
+        return scores
 
     def get_target_p(self, scores: list, pred_len: list, label: list):
         targets = []
@@ -596,12 +596,15 @@ class Problem:
                 sp_token = '<SEP>'
             text = self.context + sp_token + individual.sentence
             scores, seqs, p_len = self.compute_score([text])
+            generated_responses = [self.tokenizer.batch_decode([seq], skip_special_tokens=True)[0].strip() for seq in seqs]
+
             individual.length = p_len[0]
-            label = self.tokenizer(individual.guided_sentence, truncation=True, max_length=self.max_len, return_tensors='pt')
-            label = label['input_ids'][0] # (T, )
-            res = self.get_target_p(scores, p_len, label) # numpy array (N, )
+            # label = self.tokenizer(individual.guided_sentence, truncation=True, max_length=self.max_len, return_tensors='pt')
+            # label = label['input_ids'][0] # (T, )
+            # res = self.get_target_p(scores, p_len, label) # numpy array (N, )
             #pred_acc.extend(res.tolist())
-            individual.accuracy = res.tolist()[0]
+            accuracy = self.get_average_score(generated_responses, [individual.guided_sentence],self.acc_metric)
+            individual.accuracy = accuracy[0]
 
         else:
             individual.accuracy = float('inf')
