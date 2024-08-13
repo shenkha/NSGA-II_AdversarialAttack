@@ -8,7 +8,7 @@ from transformers import (
     AutoModelForMaskedLM,
 )
 import torch
-from attack_main import DGAttackEval
+from attack_main_clm import DGAttackEval
 import nltk
 
 
