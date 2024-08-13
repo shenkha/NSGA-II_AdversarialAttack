@@ -219,7 +219,7 @@ class Population:
 
 class Problem:
 
-    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task):
+    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task,acc_metric,bleu,rouge,meteor,ori_ref):
         self.context  = context 
         self.original_sentence = original_sentence
         self.guided_sentence = guided_sentence
@@ -234,6 +234,13 @@ class Problem:
         self.sentencoder = SentenceEncoder(model_name='paraphrase-distilroberta-base-v1', device = self.device)
         self.berttokenizer = AutoTokenizer.from_pretrained('bert-large-uncased')
         self.bertmodel = AutoModelForMaskedLM.from_pretrained('bert-large-uncased').eval().to(self.device)
+        self.num_beams = 1
+        self.num_beam_groups = 1
+        self.acc_metric = acc_metric
+        self.bleu = bleu
+        self.rouge = rouge
+        self.meteor = meteor
+        self.ori_ref = ori_ref
         
 
 #     def generate_individual(self):
