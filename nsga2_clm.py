@@ -15,7 +15,7 @@ import nltk
 import torch.nn as nn
 import time
 from DialogueAPI import dialogue
-from attack_main import SentenceEncoder
+from attack_main_clm import SentenceEncoder
 softmax = nn.Softmax(dim=1)
 bce_loss = nn.BCELoss()
 import numpy as np
