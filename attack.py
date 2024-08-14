@@ -65,7 +65,6 @@ class DGAttackEval(DGDataset):
         self.args = args
         self.model = model
         self.attacker = attacker
-        self.device = device
         self.sp_token = attacker.sp_token
 
         self.num_beams = args.num_beams 
@@ -75,6 +74,7 @@ class DGAttackEval(DGDataset):
         self.bleu = bleu
         self.rouge = rouge
         self.meteor = meteor
+        self.device = args.device
 
         self.ori_lens, self.adv_lens = [], []
         self.ori_bleus, self.adv_bleus = [], []
@@ -287,8 +287,9 @@ def main(args: argparse.Namespace):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    #device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     # device = torch.device('cpu')
+    device = args.device
     config = AutoConfig.from_pretrained(model_name_or_path, num_beams=num_beams, num_beam_groups=num_beam_groups)
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     if 'gpt' in model_name_or_path.lower():
@@ -476,6 +477,7 @@ if __name__ == "__main__":
     parser.add_argument("--out_dir", type=str,
                         default="results/logging",
                         help="Output directory")
+    parser.add_argument("--device", type=str,default="cuda",help="Determine which GPU to use")
     parser.add_argument("--seed", type=int, default=2019, help="Random seed")
     parser.add_argument("--eos_weight", type=float, default=0.8, help="Weight for EOS gradient")
     parser.add_argument("--cls_weight", type=float, default=0.2, help="Weight for classification gradient")

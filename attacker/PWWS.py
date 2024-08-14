@@ -101,10 +101,15 @@ class PWWSAttacker(SlowAttacker):
         goal: str,
     ):
         word = sent[idx]
+        if not word.strip():  # Ensure word is non-empty and non-whitespace
+            return (word, 0)
         try:
             rep_words = list(map(lambda x:x[0], self.substitute(word, pos)))
         except WordNotInDictionaryException:
             rep_words = []
+        except IndexError:
+        # Handle the case where substitute might fail
+            return (word, 0)
         rep_words = list(filter(lambda x: x != word, rep_words))
         if len(rep_words) == 0:
             return (word, 0)
