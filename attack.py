@@ -96,13 +96,14 @@ class DGAttackEval(DGDataset):
         select_beams = args.select_beams if att_method == 'structure' else 1
         max_num_samples = args.max_num_samples
         file_path = f"{out_dir}/{combined}_{att_method}_{max_per}_{fitness}_{select_beams}_{model_n}_{dataset_n}_{max_num_samples}.txt"
-        self.write_file = open(file_path, "w")
-        
+        self.write_file_path = file_path
+
 
     def log_and_save(self, display: str):
         print(display)
-        self.write_file.write(display + "\n")
-        
+        with open(self.write_file_path, 'a') as f:
+            f.write(display + "\n")
+        #self.write_file.write(display + "\n")   
 
     def get_prediction(self, text: str):
         if self.task == 'seq2seq':
