@@ -488,10 +488,10 @@ if __name__ == "__main__":
                         choices=[
                             'structure', 
                             'word', 
-                            # 'pwws', 
-                            # 'scpn', 
-                            # 'viper',
-                            # 'bae',
+                            'pwws', 
+                            'scpn', 
+                            'viper',
+                            'bae',
                             'fd', # white-box attack
                             'hotflip', # white-box attack 
                             'textbugger', # white-box attack
