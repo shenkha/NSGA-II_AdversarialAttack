@@ -215,7 +215,7 @@ class DGAttackEval(DGDataset):
                 (bleu_res['bleu'] > adv_bleu_res['bleu']) or 
                 (rouge_res['rougeL'] > adv_rouge_res['rougeL']) or 
                 (meteor_res['meteor'] > adv_meteor_res['meteor'])
-                ) and cos_sim > 0.01
+                ) and cos_sim > 0.7
             if success:
                 self.att_success += 1
             else:
