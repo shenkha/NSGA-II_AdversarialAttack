@@ -121,6 +121,10 @@ class BAEAttacker(SlowAttacker):
         sub_mode: str,
     ):
         masked_tokens = copy.deepcopy(tokens)
+
+        if masked_index < 0 or masked_index >= len(masked_tokens):
+            print(f"Skipping masked_index {masked_index} as it is out of range for tokens of length {len(masked_tokens)}")
+            return []  # Return an empty list or handle accordingly
         if sub_mode == "r":
             masked_tokens[masked_index] = '[MASK]'
         elif sub_mode == "i":
@@ -141,7 +145,10 @@ class BAEAttacker(SlowAttacker):
         with torch.no_grad():
             outputs = self.mlm_model(tokens_tensor, token_type_ids=segments_tensors)
             predictions = outputs[0]
-
+        
+        if masked_index >= predictions.shape[1]:
+            print(f"Skipping masked_index {masked_index} as it exceeds prediction length {predictions.shape[1]}")
+            return []  # Return an empty list or handle accordingly
         predicted_indices = torch.topk(predictions[0, masked_index], self.k)[1]
         predicted_tokens = self.tokenizer_mlm.convert_ids_to_tokens(predicted_indices)
         return predicted_tokens
@@ -197,17 +204,16 @@ class BAEAttacker(SlowAttacker):
             if tgt_word in self.filter_words:
                 continue
 
-            substitutes = word_predictions[keys[top_index[0]][0]:keys[top_index[0]][1]]  # |word| X k
-            word_pred_scores = word_pred_scores_all[keys[top_index[0]][0]:keys[top_index[0]][1]]
-            # In the substitute function, masked_index = top_index[0] + 1, 
-            # because "[CLS]" has been inserted into sub_words
-            replace_sub_len, insert_sub_len = 0, 0
+            # Initialize temp_sub_mode
             temp_sub_mode = -1
-            # substitutes: list of candidate words
+
+            # Generate substitutes
             if self.sub_mode == 0:
                 substitutes = self.get_substitues(top_index[0] + 1, sub_words, 'r')
+                temp_sub_mode = 0  # Explicitly set for replacement
             elif self.sub_mode == 1:
                 substitutes = self.get_substitues(top_index[0] + 1, sub_words, 'i')
+                temp_sub_mode = 1  # Explicitly set for insertion
             elif self.sub_mode == 2:
                 rand_num = random.random()
                 if rand_num < self.replace_rate:
@@ -223,6 +229,11 @@ class BAEAttacker(SlowAttacker):
                 substitutes = substitutes_replace + substitutes_insert
             else:
                 raise NotImplementedError
+
+            # Skip if no substitutes were generated
+            if not substitutes:
+                continue
+
             most_gap = 0.0
             candidate = None
             for i, substitute in enumerate(substitutes): # iterate all candidates
@@ -238,7 +249,7 @@ class BAEAttacker(SlowAttacker):
                     else:
                         temp_sub_mode = 1
                 temp_replace = copy.deepcopy(final_words)
-                # Check if we should REPLACE or INSERT the substitute into the orignal word list 
+                # Check if we should REPLACE or INSERT the substitute into the original word list 
                 is_replace = self.sub_mode == 0 or temp_sub_mode == 0 
                 is_insert = self.sub_mode == 1 or temp_sub_mode == 1 
                 if is_replace:
@@ -248,66 +259,26 @@ class BAEAttacker(SlowAttacker):
                     temp_replace[top_index[0]] = substitute
                     pos_tag_list_after = [elem[1] for elem in pos_tagger(temp_replace)]
                     # reverse temp_replace back to its original if pos_tag changes, and continue
-                    # searching for the next best substitue
+                    # searching for the next best substitute
                     if pos_tag_list_after != pos_tag_list_before:
                         temp_replace[top_index[0]] = orig_word
                         continue
                 elif is_insert:
                     temp_replace.insert(top_index[0] + offset, substitute)
                 else:
-                   raise NotImplementedError
+                    raise NotImplementedError
 
                 temp_text = self.tokenizer_mlm.convert_tokens_to_string(temp_replace)
-                # use_score = self.encoder.calc_score(temp_text, x_orig)
                 use_score = self.use_encoder.count_use(temp_text, x_orig)
-                # From TextAttack's implementation: 
-                # Finally, since the BAE code is based on the TextFooler code, we need to adjust 
-                # the threshold to account for the missing / pi in the cosine similarity comparison. 
-                # So the final threshold is 1 - (1 - 0.8) / pi = 1 - (0.2 / pi) = 0.936338023.
                 if use_score < 0.936:
                     continue
-                # scores, seqs, pred_len = self.compute_score([temp_text], batch_size=5) # list of [T X V], [T], [1]
-                # temp_prob = scores[0].squeeze()
-                # feature.query += 1
-                # temp_prob = torch.softmax(temp_prob, -1)
-                # temp_label = torch.argmax(temp_prob)
-                # print("temp_label: ", temp_label)
+                
                 new_strings.append((top_index[0], temp_text))
-
-            #     if goal.check(feature.final_adverse, temp_label):
-            #         feature.change += 1
-            #         if is_replace:
-            #             final_words[top_index[0]] = substitute
-            #         elif is_insert:
-            #             final_words.insert(top_index[0] + offset, substitute)
-            #         else:
-            #             raise NotImplementedError()
-            #         feature.changes.append([keys[top_index[0]][0], substitute, tgt_word])
-            #         feature.final_adverse = temp_text
-            #         feature.success = 4
-            #         return feature.final_adverse
-            #     else:
-            #         label_prob = temp_prob[goal]
-            #         gap = current_prob - label_prob
-            #         if gap > most_gap:
-            #             most_gap = gap
-            #             candidate = substitute
-            #     if is_insert:
-            #         final_words.pop(top_index[0] + offset)
-
-            # if most_gap > 0:
-            #     feature.change += 1
-            #     feature.changes.append([keys[top_index[0]][0], candidate, tgt_word])
-            #     current_prob = current_prob - most_gap
-            #     if is_replace:
-            #         final_words[top_index[0]] = candidate
-            #     elif is_insert:
-            #         final_words.insert(top_index[0] + offset, candidate) 
-            #         offset += 1
-            #     else:
-            #         raise NotImplementedError()
             
-        # feature.final_adverse = (self.tokenizer_mlm.convert_tokens_to_string(final_words))
-        # feature.success = 2
-        # return None
+            # Check if substitutions should be applied
+            if most_gap > 0:
+                feature.change += 1
+                # Apply the changes to the final_words list based on selected substitute
+
         return new_strings
+
