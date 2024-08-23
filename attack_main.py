@@ -67,6 +67,8 @@ nltk.download('wordnet')
 nltk.download('omw-1.4')
 nltk.download('averaged_perceptron_tagger')
 nltk.download('punkt')
+nltk.download('punkt_tab')
+nltk.download('averaged_perceptron_tagger_eng')
 
 
 
@@ -304,7 +306,7 @@ class DGAttackEval(DGDataset):
             # print("Pop:", pop)
             # print("Candidate:", best_individual)
             
-            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device,args.max_len,self.task,args.acc_metric,self.bleu,self.rouge,self.meteor)
+            problem = nsga2_new.Problem(self.model, self.tokenizer,original_context, free_message, guided_message, self.device,args.max_len,self.task,args.acc_metric,self.bleu,self.rouge,self.meteor,output)
 
             evolution = nsga2_new.Evolution(args.crossover_flag, self.write_file_path, problem, num_of_generations=args.num_gen, num_of_individuals=args.num_ind, num_of_tour_particips=2,
                       tournament_prob=0.9, crossover_param=2, mutation_param=5 )

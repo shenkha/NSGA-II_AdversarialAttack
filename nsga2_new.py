@@ -273,7 +273,7 @@ class Population:
 
 class Problem:
 
-    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task,acc_metric,bleu,rouge,meteor):
+    def __init__(self,model, tokenizer, context, original_sentence, guided_sentence, device,max_len,task,acc_metric,bleu,rouge,meteor,ori_ref):
         self.context  = context 
         self.original_sentence = original_sentence
         self.guided_sentence = guided_sentence
@@ -294,6 +294,7 @@ class Problem:
         self.bleu = bleu
         self.rouge = rouge
         self.meteor = meteor
+        self.ori_ref = ori_ref
         
 
 #     def generate_individual(self):
@@ -468,13 +469,22 @@ class Problem:
 
             # Calculate the average of BLEU, ROUGE, and METEOR
             average_score = (bleu_score + rouge_score + meteor_score_value) / 3.0
+            #Scale the score so that it would not be so small
+            average_score = average_score + 1
+
+            # average_score = (bleu_score + rouge_score + meteor_score_value) 
+            # average_score = average_score + 1
+
             if acc_metric =="combined":
                 scores.append(average_score)
             elif acc_metric == "bleu":
+                bleu_score = bleu_score + 1
                 scores.append(bleu_score)
             elif acc_metric == "rouge":
+                rouge_score = rouge_score + 1
                 scores.append(rouge_score)
             elif acc_metric == "meteor":
+                meteor_score_value = meteor_score_value + 1
                 scores.append(meteor_score_value)
 
         return scores
@@ -603,7 +613,8 @@ class Problem:
             # label = label['input_ids'][0] # (T, )
             # res = self.get_target_p(scores, p_len, label) # numpy array (N, )
             #pred_acc.extend(res.tolist())
-            accuracy = self.get_average_score(generated_responses, [individual.guided_sentence],self.acc_metric)
+            #accuracy = self.get_average_score(generated_responses, [individual.guided_sentence],self.acc_metric)
+            accuracy = self.get_average_score(generated_responses, [self.ori_ref],self.acc_metric)
             individual.accuracy = accuracy[0]
 
         else:
@@ -892,7 +903,7 @@ class Evolution:
             new_population.extend(self.population.fronts[front_num][0:self.num_of_individuals - len(new_population)])
             returned_population = self.population
             for individual in returned_population.fronts[0]:
-                log_message = f"Sentence: '{individual.sentence}', Accuracy: {individual.accuracy}, Length: {individual.length}"
+                log_message = f"Sentence: '{individual.sentence}', Accuracy: {(individual.accuracy - 0.95)}, Length: {individual.length}"
                 self.log_and_save_gen(log_message)
             self.population = new_population
             self.plot_generation(self.population, i)
@@ -905,7 +916,7 @@ class Evolution:
         return returned_population.fronts[0] if returned_population else self.population.fronts[0]
     
     def plot_generation(self, population, generation):
-        pred_acc = [individual.accuracy for individual in population.population]
+        pred_acc = [(individual.accuracy - 0.95) for individual in population.population]
         pred_len = [individual.length for individual in population.population]
 
         F = np.zeros((len(pred_acc), len(pred_acc)))
