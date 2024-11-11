@@ -729,8 +729,6 @@ class NSGA2Utils:
             return -1
 
     def create_children(self, population):
-        #Only do mutation but not crossover
-        #print("Creating children...")
         children = []
         while len(children) < len(population):
             #These are for crossover then mutation
